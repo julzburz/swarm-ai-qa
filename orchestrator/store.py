@@ -14,6 +14,8 @@ class RunStore(Protocol):
 
     def get_run(self, run_id: UUID) -> RunStateV1 | None: ...
 
+    def list_runs(self, limit: int = 20, offset: int = 0) -> list[RunStateV1]: ...
+
     def append_event(self, event: RunEventV1) -> RunEventV1: ...
 
     def list_events(self, run_id: UUID, after_sequence: int = 0) -> list[RunEventV1]: ...
@@ -78,6 +80,18 @@ class SQLiteRunStore:
                 "SELECT state_json FROM runs WHERE run_id = ?", (str(run_id),)
             ).fetchone()
         return RunStateV1.model_validate_json(row[0]) if row else None
+
+    def list_runs(self, limit: int = 20, offset: int = 0) -> list[RunStateV1]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT state_json FROM runs
+                ORDER BY updated_at DESC, run_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        return [RunStateV1.model_validate_json(row[0]) for row in rows]
 
     def append_event(self, event: RunEventV1) -> RunEventV1:
         event_without_sequence = event.model_copy(update={"sequence": None})

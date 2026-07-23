@@ -20,6 +20,15 @@ Al iniciar con Neon, la API comprueba la conexión y la existencia de las tablas
 `GET /healthz` informa únicamente si el storage activo es `neon` o `sqlite`, sin exponer
 hostnames, usuarios ni credenciales.
 
+## Autenticación e historial
+
+Si `SWARM_API_KEY` contiene al menos 32 caracteres, todas las rutas `/v1/*` exigen
+`Authorization: Bearer <clave>`. `/healthz` permanece público y solo informa si la protección
+Bearer está activa. La clave nunca se devuelve en respuestas ni logs.
+
+`GET /v1/runs?limit=20&offset=0` lista ejecuciones persistidas, ordenadas por su actualización
+más reciente. QA Director consume este endpoint para reabrir análisis conservados en Neon.
+
 ## Flujo seguro
 
 1. Enviar una `UserMissionRequestV1` a `POST /v1/plans/preview`.

@@ -74,8 +74,34 @@ class ControlPlaneApiTests(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["status"], "ok")
         self.assertEqual(health.json()["storage"], "sqlite")
+        self.assertEqual(health.json()["authentication"], "disabled")
         self.assertEqual(openapi.status_code, 200)
         self.assertIn("/v1/runs", openapi.json()["paths"])
+
+    def test_bearer_authentication_protects_v1_routes(self) -> None:
+        api_key = "test-api-key-with-at-least-32-characters"
+        app = create_app(
+            settings=ApiSettings(api_key=api_key),
+            store=self.store,
+        )
+        with TestClient(app) as client:
+            health = client.get("/healthz")
+            missing = client.get("/v1/runs")
+            invalid = client.get(
+                "/v1/runs",
+                headers={"Authorization": "Bearer invalid"},
+            )
+            authorized = client.get(
+                "/v1/runs",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json()["authentication"], "bearer")
+        self.assertEqual(missing.status_code, 401)
+        self.assertEqual(missing.headers["www-authenticate"], "Bearer")
+        self.assertEqual(invalid.status_code, 401)
+        self.assertEqual(authorized.status_code, 200)
 
     def test_plan_preview_reports_missing_executors(self) -> None:
         mission = api_mission()
@@ -130,12 +156,18 @@ class ControlPlaneApiTests(unittest.TestCase):
             state = self._wait_for_terminal(client, run_id)
             history = client.get(f"/v1/runs/{run_id}/events")
             stream = client.get(f"/v1/runs/{run_id}/events/stream")
+            runs = client.get("/v1/runs?limit=10")
 
         self.assertEqual(state["status"], RunStatus.COMPLETED.value)
         self.assertEqual(history.status_code, 200)
         self.assertEqual(history.json()[0]["event_type"], "run.created")
         self.assertEqual(history.json()[-1]["event_type"], "run.completed")
         self.assertIn("event: run.completed", stream.text)
+        self.assertEqual(runs.status_code, 200)
+        self.assertEqual(runs.json()[0]["run_id"], run_id)
+        self.assertEqual(runs.json()[0]["status"], "completed")
+        self.assertEqual(runs.json()[0]["source"], "runtime")
+        self.assertGreater(runs.json()[0]["completed_agents"], 0)
 
     def test_active_run_can_be_cancelled(self) -> None:
         mission = api_mission()
@@ -202,6 +234,25 @@ class ApiSettingsTests(unittest.TestCase):
             {"SWARM_STORAGE_BACKEND": "neon"},
             clear=True,
         ), self.assertRaises(RuntimeError):
+            ApiSettings.from_env(env_file=None)
+
+    def test_api_key_is_loaded_without_being_exposed_by_health(self) -> None:
+        api_key = "configured-secret-with-at-least-32-characters"
+        with patch.dict(
+            os.environ,
+            {"SWARM_API_KEY": api_key},
+            clear=True,
+        ):
+            settings = ApiSettings.from_env(env_file=None)
+        self.assertEqual(settings.api_key, api_key)
+        self.assertNotIn(api_key, repr(settings))
+
+    def test_short_api_key_is_rejected(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SWARM_API_KEY": "too-short"},
+            clear=True,
+        ), self.assertRaises(ValueError):
             ApiSettings.from_env(env_file=None)
 
 

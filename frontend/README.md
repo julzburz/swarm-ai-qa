@@ -20,6 +20,10 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Next.js proxies `/control-plane/*` to
-`SWARM_CONTROL_PLANE_URL`, defaulting to `http://127.0.0.1:8000`. This server-side setting is
-not exposed as a `NEXT_PUBLIC_` variable and must never contain credentials.
+Open `http://localhost:3000`. A server-side Route Handler proxies `/control-plane/*` to
+`SWARM_CONTROL_PLANE_URL`, defaulting to `http://127.0.0.1:8000`. If FastAPI uses
+`SWARM_API_KEY`, copy the same secret to `SWARM_CONTROL_PLANE_API_KEY` in `frontend/.env.local`.
+The proxy adds the Bearer header server-side, including for SSE, so the browser never receives
+the key. Neither variable may use the `NEXT_PUBLIC_` prefix.
+
+The left rail loads recent persisted runs and can reopen their state, events and final evidence.

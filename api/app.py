@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, status
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from orchestrator import (
     AgentRegistry,
@@ -29,6 +31,7 @@ from .schemas import (
     HealthResponseV1,
     PlanPreviewResponseV1,
     RunAcceptedResponseV1,
+    RunSummaryV1,
 )
 
 
@@ -52,6 +55,26 @@ def create_app(
     orchestrator = SwarmOrchestrator(agent_registry, run_store, events)
     director = RuleBasedQaDirector()
     controller = RunController(orchestrator, agent_registry, director)
+    bearer = HTTPBearer(auto_error=False)
+
+    async def require_api_key(
+        credentials: HTTPAuthorizationCredentials | None = Security(bearer),
+    ) -> None:
+        if settings.api_key is None:
+            return
+        supplied = credentials.credentials if credentials is not None else ""
+        if (
+            credentials is None
+            or credentials.scheme.lower() != "bearer"
+            or not secrets.compare_digest(supplied, settings.api_key)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Valid bearer API key required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    protected = [Depends(require_api_key)]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -93,12 +116,14 @@ def create_app(
         return HealthResponseV1(
             version=settings.version,
             storage=storage_backend,
+            authentication="bearer" if settings.api_key else "disabled",
         )
 
     @app.post(
         "/v1/plans/preview",
         response_model=PlanPreviewResponseV1,
         tags=["runs"],
+        dependencies=protected,
     )
     async def preview_plan(mission: UserMissionRequestV1) -> PlanPreviewResponseV1:
         plan = controller.plan(mission)
@@ -115,6 +140,7 @@ def create_app(
         response_model=RunAcceptedResponseV1,
         status_code=status.HTTP_202_ACCEPTED,
         tags=["runs"],
+        dependencies=protected,
     )
     async def create_run(request: CreateRunRequestV1) -> RunAcceptedResponseV1:
         plan = controller.plan(request.mission)
@@ -148,14 +174,39 @@ def create_app(
             event_stream_url=f"{base}/events/stream",
         )
 
-    @app.get("/v1/runs/{run_id}", response_model=RunStateV1, tags=["runs"])
+    @app.get(
+        "/v1/runs",
+        response_model=list[RunSummaryV1],
+        tags=["runs"],
+        dependencies=protected,
+    )
+    async def list_runs(
+        limit: Annotated[int, Query(ge=1, le=100)] = 20,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> list[RunSummaryV1]:
+        return [
+            _summarize_run(state)
+            for state in run_store.list_runs(limit=limit, offset=offset)
+        ]
+
+    @app.get(
+        "/v1/runs/{run_id}",
+        response_model=RunStateV1,
+        tags=["runs"],
+        dependencies=protected,
+    )
     async def get_run(run_id: UUID) -> RunStateV1:
         state = orchestrator.get_run(run_id)
         if state is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
         return state
 
-    @app.post("/v1/runs/{run_id}/cancel", response_model=RunStateV1, tags=["runs"])
+    @app.post(
+        "/v1/runs/{run_id}/cancel",
+        response_model=RunStateV1,
+        tags=["runs"],
+        dependencies=protected,
+    )
     async def cancel_run(run_id: UUID) -> RunStateV1:
         try:
             return await orchestrator.cancel(run_id)
@@ -166,6 +217,7 @@ def create_app(
         "/v1/runs/{run_id}/events",
         response_model=list[RunEventV1],
         tags=["events"],
+        dependencies=protected,
     )
     async def list_events(
         run_id: UUID,
@@ -174,7 +226,11 @@ def create_app(
         _require_run(run_store, run_id)
         return run_store.list_events(run_id, after_sequence)
 
-    @app.get("/v1/runs/{run_id}/events/stream", tags=["events"])
+    @app.get(
+        "/v1/runs/{run_id}/events/stream",
+        tags=["events"],
+        dependencies=protected,
+    )
     async def stream_events(
         request: Request,
         run_id: UUID,
@@ -217,6 +273,33 @@ def _require_run(store: RunStore, run_id: UUID) -> RunStateV1:
     if state is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return state
+
+
+def _summarize_run(state: RunStateV1) -> RunSummaryV1:
+    has_repository = state.mission.repository_target is not None
+    has_runtime = state.mission.runtime_target is not None
+    source = (
+        "combined"
+        if has_repository and has_runtime
+        else "repository"
+        if has_repository
+        else "runtime"
+    )
+    return RunSummaryV1(
+        run_id=state.run_id,
+        mission_id=state.mission.mission_id,
+        objective=state.mission.objective,
+        mode=state.mission.mode,
+        source=source,
+        status=state.status,
+        agent_count=len(state.task_records),
+        completed_agents=sum(
+            record.status.value == "completed"
+            for record in state.task_records.values()
+        ),
+        created_at=state.created_at,
+        updated_at=state.updated_at,
+    )
 
 
 def _format_sse(event: RunEventV1) -> str:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
 from schemas.common import StrictModel
-from schemas.mission import SwarmExecutionPlanV1, UserMissionRequestV1
+from schemas.mission import MissionMode, SwarmExecutionPlanV1, UserMissionRequestV1
+from orchestrator.models import RunStatus
 
 
 class HealthResponseV1(StrictModel):
@@ -12,6 +14,7 @@ class HealthResponseV1(StrictModel):
     service: Literal["swarm-ai-qa-control-plane"] = "swarm-ai-qa-control-plane"
     version: str
     storage: Literal["sqlite", "neon"]
+    authentication: Literal["disabled", "bearer"]
 
 
 class PlanPreviewResponseV1(StrictModel):
@@ -34,3 +37,16 @@ class RunAcceptedResponseV1(StrictModel):
     state_url: str
     events_url: str
     event_stream_url: str
+
+
+class RunSummaryV1(StrictModel):
+    run_id: UUID
+    mission_id: UUID
+    objective: str
+    mode: MissionMode
+    source: Literal["repository", "runtime", "combined"]
+    status: RunStatus
+    agent_count: int
+    completed_agents: int
+    created_at: datetime
+    updated_at: datetime

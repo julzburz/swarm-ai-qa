@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -14,8 +14,9 @@ class ApiSettings:
 
     sqlite_path: Path = Path(".data/swarm-ai-qa.db")
     storage_backend: Literal["sqlite", "neon"] = "sqlite"
+    api_key: str | None = field(default=None, repr=False)
     title: str = "Swarm AI QA Control Plane"
-    version: str = "0.2.0"
+    version: str = "0.3.0"
 
     @classmethod
     def from_env(
@@ -42,7 +43,11 @@ class ApiSettings:
             raise RuntimeError(
                 "SWARM_STORAGE_BACKEND=neon requires DATABASE_URL"
             )
+        api_key = os.getenv("SWARM_API_KEY", "").strip() or None
+        if api_key is not None and len(api_key) < 32:
+            raise ValueError("SWARM_API_KEY must contain at least 32 characters")
         return cls(
             sqlite_path=Path(sqlite_path),
             storage_backend=storage_backend,
+            api_key=api_key,
         )
