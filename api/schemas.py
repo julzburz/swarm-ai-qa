@@ -11,6 +11,7 @@ class HealthResponseV1(StrictModel):
     status: Literal["ok"] = "ok"
     service: Literal["swarm-ai-qa-control-plane"] = "swarm-ai-qa-control-plane"
     version: str
+    storage: Literal["sqlite", "neon"]
 
 
 class PlanPreviewResponseV1(StrictModel):

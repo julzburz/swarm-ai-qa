@@ -28,14 +28,15 @@ class DatabaseSettings:
     """URLs separadas para tráfico de aplicación y migraciones."""
 
     database_url: str
-    database_direct_url: str
+    database_direct_url: str | None = None
     pool_size: int = 5
     max_overflow: int = 10
     pool_recycle_seconds: int = 300
 
     def __post_init__(self) -> None:
         _sqlalchemy_psycopg_url(self.database_url)
-        _sqlalchemy_psycopg_url(self.database_direct_url)
+        if self.database_direct_url is not None:
+            _sqlalchemy_psycopg_url(self.database_direct_url)
         if self.pool_size <= 0:
             raise ValueError("pool_size must be positive")
         if self.max_overflow < 0:
@@ -44,18 +45,23 @@ class DatabaseSettings:
             raise ValueError("pool_recycle_seconds must be positive")
 
     @classmethod
-    def from_env(cls, env_file: str | Path | None = ".env") -> "DatabaseSettings":
+    def from_env(
+        cls,
+        env_file: str | Path | None = ".env",
+        *,
+        require_direct: bool = True,
+    ) -> "DatabaseSettings":
         if env_file is not None:
             load_dotenv(dotenv_path=env_file, override=False)
         database_url = os.getenv("DATABASE_URL", "").strip()
         direct_url = os.getenv("DATABASE_DIRECT_URL", "").strip()
         if not database_url:
             raise RuntimeError("DATABASE_URL is required")
-        if not direct_url:
+        if require_direct and not direct_url:
             raise RuntimeError("DATABASE_DIRECT_URL is required for migrations")
         return cls(
             database_url=database_url,
-            database_direct_url=direct_url,
+            database_direct_url=direct_url or None,
             pool_size=int(os.getenv("DATABASE_POOL_SIZE", "5")),
             max_overflow=int(os.getenv("DATABASE_MAX_OVERFLOW", "10")),
             pool_recycle_seconds=int(os.getenv("DATABASE_POOL_RECYCLE_SECONDS", "300")),
@@ -67,6 +73,8 @@ class DatabaseSettings:
 
     @property
     def sqlalchemy_direct_url(self) -> str:
+        if self.database_direct_url is None:
+            raise RuntimeError("DATABASE_DIRECT_URL is required for migrations")
         return _sqlalchemy_psycopg_url(self.database_direct_url)
 
     @property
@@ -79,7 +87,10 @@ class DatabaseSettings:
 
     @property
     def direct_url_uses_pooler(self) -> bool:
-        return "-pooler." in _host(self.database_direct_url)
+        return (
+            self.database_direct_url is not None
+            and "-pooler." in _host(self.database_direct_url)
+        )
 
     def validate_neon_topology(self) -> None:
         if not self.is_neon:

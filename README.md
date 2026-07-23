@@ -60,7 +60,8 @@ addresses.
 - Playwright Chromium journeys with screenshots, traces, console errors and network observations.
 - Repository + runtime evidence correlation without unsupported causal claims.
 - Next.js QA Director UI with real planning, execution status, event streaming and reports.
-- SQLite local checkpoint store and Neon-compatible PostgreSQL store.
+- Automatic Neon persistence when `DATABASE_URL` exists, with SQLite fallback for local work.
+- Startup validation for the Neon connection and required run tables.
 
 ## Stack
 
@@ -69,7 +70,7 @@ addresses.
 - **Repository intelligence:** GitHub REST API, read-only
 - **Runtime QA:** Playwright + Chromium
 - **Frontend:** Next.js App Router, React, TypeScript
-- **Persistence:** SQLite locally, Neon PostgreSQL adapter available
+- **Persistence:** automatic Neon PostgreSQL selection with local SQLite fallback
 
 ## Quick start
 
@@ -127,6 +128,7 @@ Important variables:
 |---|---|
 | `DATABASE_URL` | Pooled Neon application connection |
 | `DATABASE_DIRECT_URL` | Direct Neon connection for migrations |
+| `SWARM_STORAGE_BACKEND` | `auto`, `neon` or `sqlite` store selection |
 | `GITHUB_TOKEN` | Read-only access for explicitly allowlisted private repositories |
 | `SWARM_GITHUB_ALLOWED_PRIVATE_REPOSITORIES` | Canonical private repository IDs |
 | `SWARM_SQLITE_PATH` | Local checkpoint database |
@@ -143,7 +145,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 49 tests
+Ran 54 tests
 OK
 ```
 
@@ -175,7 +177,6 @@ workers/       Bounded tool workers
 ## Current limitations
 
 - HTTP authentication must be added before a public deployment.
-- The API factory still defaults to SQLite; automatic Neon selection is pending.
 - Browser automation is navigation-only: no login, clicks or form submission yet.
 - Screenshots and traces must not contain real sensitive user data.
 - Accessibility, security and performance agents are visible as pending and never simulated.

@@ -23,7 +23,8 @@ La fundacion ejecutable incluye:
 - aplicacion web demo local y determinista;
 - frontend Next.js de QA Director conectado al control plane;
 - deteccion de monorepos y componentes con impacto de cambio por componente;
-- 49 pruebas automatizadas verdes.
+- seleccion automatica y persistencia durable en Neon con fallback SQLite;
+- 54 pruebas automatizadas verdes.
 
 La carpeta no estaba inicializada como repositorio Git al realizar esta actualizacion. Si se
 trabaja mediante una carpeta sincronizada, verificar que todos los archivos hayan terminado
@@ -167,6 +168,19 @@ Se agrego `frontend/`, una aplicacion Next.js App Router + TypeScript:
 Los artefactos se escriben bajo `SWARM_ARTIFACT_ROOT`, cuyo valor predeterminado es
 `.data/artifacts`. Nunca se escriben dentro del repositorio evaluado.
 
+## Actualizacion implementada: persistencia automática en Neon
+
+La API selecciona el store mediante `SWARM_STORAGE_BACKEND`:
+
+- `auto` usa Neon si existe `DATABASE_URL` y SQLite si no existe;
+- `neon` exige una conexión Neon configurada;
+- `sqlite` fuerza el checkpoint local en `.data/`.
+
+Al iniciar con Neon, el backend comprueba la conexión y las tablas `runs`, `run_tasks` y
+`run_events`. El endpoint `/healthz` muestra solamente el tipo de storage, sin revelar datos de
+conexión. Se validó una ejecución real de un repositorio público de GitHub, se cerró el store y
+se confirmó que la API restauró el mismo run completado después del reinicio.
+
 ## Archivos agregados o modificados
 
 - `api/app.py`: factory de FastAPI, rutas, JSON y SSE.
@@ -190,7 +204,7 @@ Los artefactos se escriben bajo `SWARM_ARTIFACT_ROOT`, cuyo valor predeterminado
 - `frontend/`: QA Director Next.js, formulario de mision, preview, SSE y reporte.
 - `requirements.txt`: FastAPI y Uvicorn.
 - `requirements-dev.txt`: dependencias de desarrollo y pruebas.
-- `.env.example`: variable `SWARM_SQLITE_PATH`.
+- `.env.example`: selección de storage y fallback `SWARM_SQLITE_PATH`.
 - `.gitignore`: exclusion de `.data/`.
 
 ## Preparar otra computadora
@@ -318,13 +332,15 @@ python -m unittest discover -s tests -v
 Resultado al 22 de julio de 2026:
 
 ```text
-Ran 49 tests
+Ran 54 tests
 OK
 ```
 
 Cobertura funcional de las nuevas pruebas:
 
 - health y OpenAPI;
+- selección automática SQLite/Neon y fallo seguro sin credenciales;
+- persistencia y restauración de un run mediante la API después de reiniciar el store;
 - preview y deteccion de executors ausentes;
 - aprobacion explicita obligatoria;
 - rechazo seguro cuando faltan executors;
@@ -388,7 +404,6 @@ La aplicacion demo tambien se valido en el navegador integrado:
 - Hay executors reales para Repository Analyst, Test Architect, Browser Automation y Reporting.
 - La factory generica `api.app:create_app` sigue sin executors; para GitHub se debe usar
   `api.github_factory:create_github_app`.
-- La API local crea `SQLiteRunStore`; la seleccion automatica de `NeonRunStore` esta pendiente.
 - Todavia no existen endpoints de projects, targets, findings, artifacts o GitHub Checks.
 - No hay autenticacion ni autorizacion HTTP implementadas.
 - El frontend actual no tiene login, listado persistente de proyectos ni historial navegable.
@@ -413,15 +428,14 @@ La aplicacion demo tambien se valido en el navegador integrado:
 
 ## Siguiente corte recomendado
 
-La inteligencia multicomponente y el frontend minimo de QA Director ya estan implementados. El
-siguiente corte recomendado es preparar persistencia y seguridad de despliegue:
+La inteligencia multicomponente, el frontend mínimo de QA Director y la persistencia automática
+en Neon ya están implementados. El siguiente corte recomendado es seguridad e historial:
 
-1. Conectar la factory API a `NeonRunStore` mediante configuracion.
-2. Implementar autenticacion HTTP minima antes de cualquier despliegue publico.
-3. Agregar endpoints de listado de runs, findings y artefactos para el dashboard.
-4. Implementar historial navegable en QA Director.
-5. Integrar Accessibility con axe y correlacion Browser + Accessibility.
-6. Despues incorporar Security basico y Performance smoke sin pruebas destructivas.
+1. Implementar autenticación HTTP mínima antes de cualquier despliegue público.
+2. Agregar endpoints de listado de runs, findings y artefactos para el dashboard.
+3. Implementar historial navegable en QA Director.
+4. Integrar Accessibility con axe y correlación Browser + Accessibility.
+5. Después incorporar Security básico y Performance smoke sin pruebas destructivas.
 
 Trabajo complementario pendiente: endpoints de findings y artefactos, persistencia/reanudacion
 de tareas tras reiniciar el proceso y almacenamiento externo de artefactos.

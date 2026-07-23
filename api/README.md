@@ -12,8 +12,13 @@ python -m uvicorn api.app:create_app --factory --reload
 
 OpenAPI queda disponible en `http://127.0.0.1:8000/docs`.
 
-La base SQLite local usa `.data/swarm-ai-qa.db`. Puede cambiarse con
-`SWARM_SQLITE_PATH`. El directorio `.data/` no debe versionarse.
+Con `SWARM_STORAGE_BACKEND=auto`, la API usa Neon cuando existe `DATABASE_URL` y SQLite
+cuando no existe. También puede forzarse `neon` o `sqlite`. La ruta SQLite predeterminada es
+`.data/swarm-ai-qa.db` y puede cambiarse con `SWARM_SQLITE_PATH`; `.data/` no se versiona.
+
+Al iniciar con Neon, la API comprueba la conexión y la existencia de las tablas necesarias.
+`GET /healthz` informa únicamente si el storage activo es `neon` o `sqlite`, sin exponer
+hostnames, usuarios ni credenciales.
 
 ## Flujo seguro
 
