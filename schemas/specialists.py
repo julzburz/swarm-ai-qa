@@ -62,8 +62,21 @@ class SecurityAgentOutputV1(StrictModel):
     task_id: UUID
     findings: list[FindingV1] = Field(default_factory=list)
     verification_requests: list[VerificationRequestV1] = Field(default_factory=list)
+    coverage: "SecurityCoverageV1"
     tool_executions: list[ToolExecutionResultV1] = Field(min_length=1)
     residual_risks: list[NonEmptyStr] = Field(default_factory=list)
+
+
+class SecurityCoverageV1(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    mode: Literal["runtime_passive", "repository_scope_only"]
+    repository_snapshot_observed: bool = False
+    routes_audited: int = Field(ge=0)
+    responses_observed: int = Field(ge=0)
+    cookies_observed: int = Field(ge=0)
+    tls_observed: bool
+    policy_version: NonEmptyStr
+    active_exploitation_performed: Literal[False] = False
 
 
 class AccessibilityTaskV1(SpecialistTaskBaseV1):

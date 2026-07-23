@@ -79,13 +79,18 @@ class RuleBasedQaDirector:
             if mapping is None:
                 continue
             agent_id, capabilities = mapping
+            dependencies = [architect_task.task_id]
+            if domain == QualityDomain.SECURITY:
+                dependencies = list(
+                    dict.fromkeys([*prerequisite_ids, *dependencies])
+                )
             task = SpecialistTaskV1(
                 agent_id=agent_id,
                 objective=self._objective_for(domain, mission),
                 domain=domain,
                 capability_ids=capabilities,
                 risk_refs=self._risk_refs(domain, mission, change_impact),
-                depends_on=[architect_task.task_id],
+                depends_on=dependencies,
                 estimated_requests=self._request_estimate(domain),
             )
             tasks.append(task)

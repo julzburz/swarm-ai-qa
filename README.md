@@ -20,7 +20,9 @@ a real quality-engineering team:
 2. **Repository Analyst** detects components, languages, frameworks and pull-request impact.
 3. **Test Architect** converts evidence and risk into approved runtime journeys.
 4. **Browser Automation Engineer** executes bounded Playwright navigation.
-5. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
+5. **Accessibility Specialist** runs axe-core against approved pages.
+6. **Security Test Engineer** passively audits authorized HTTP/TLS responses.
+7. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
 
 ```mermaid
 flowchart LR
@@ -28,9 +30,13 @@ flowchart LR
     D --> R["Repository Analyst"]
     R --> T["Test Architect"]
     T --> B["Browser Automation"]
+    T --> A["Accessibility / axe"]
+    T --> S["Passive Security"]
     R --> E["Evidence & Reporting"]
     T --> E
     B --> E
+    A --> E
+    S --> E
     E --> Q["Evidence-backed QA report"]
 ```
 
@@ -59,7 +65,10 @@ addresses.
 - Conservative Next.js route candidates derived from verifiable file conventions.
 - Playwright Chromium journeys with screenshots, traces, console errors and network observations.
 - Real axe-core WCAG A/AA scans with redacted JSON evidence and explicit manual coverage gaps.
+- Passive HTTPS/TLS, security-header, cookie and CORS inspection with redacted evidence.
+- Security execution limited to allowlisted routes, bounded `GET` requests and no exploitation.
 - Browser + accessibility correlation by the exact allowlisted runtime URL.
+- Browser + security correlation by the exact allowlisted runtime URL.
 - Repository + runtime evidence correlation without unsupported causal claims.
 - Next.js QA Director UI with real planning, execution status, event streaming and reports.
 - Automatic Neon persistence when `DATABASE_URL` exists, with SQLite fallback for local work.
@@ -70,7 +79,7 @@ addresses.
 - **Control plane:** Python, FastAPI, Pydantic
 - **Orchestration:** asynchronous dependency graph, retries, cancellation and event stream
 - **Repository intelligence:** GitHub REST API, read-only
-- **Runtime QA:** Playwright + Chromium + axe-core
+- **Runtime QA:** Playwright + Chromium + axe-core + bounded HTTPX inspection
 - **Frontend:** Next.js App Router, React, TypeScript
 - **Persistence:** automatic Neon PostgreSQL selection with local SQLite fallback
 
@@ -150,7 +159,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 61 tests
+Ran 67 tests
 OK
 ```
 
@@ -184,7 +193,9 @@ workers/       Bounded tool workers
 - Bearer authentication is single-tenant; user accounts and role-based access are not implemented.
 - Browser automation is navigation-only: no login, clicks or form submission yet.
 - Screenshots and traces must not contain real sensitive user data.
-- Security and performance agents are visible as pending and never simulated.
+- Performance remains visible as pending and is never simulated.
+- Security is passive runtime inspection only; source, dependency, authenticated and active
+  exploit testing remain out of scope.
 - axe-core detects only automatable issues; keyboard, screen-reader and full WCAG conformance
   remain explicitly unverified.
 - Active tasks are not resumed automatically after a process restart.

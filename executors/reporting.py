@@ -5,7 +5,11 @@ from schemas.common import QualityDomain
 from schemas.evidence import AgentOutputEnvelopeV1, CorrelatedFindingV1
 from schemas.execution import CoverageSummaryV1, SpecialistTaskV1
 from schemas.reporting import QaRunReportV1
-from schemas.specialists import AccessibilityAgentOutputV1, BrowserAgentOutputV1
+from schemas.specialists import (
+    AccessibilityAgentOutputV1,
+    BrowserAgentOutputV1,
+    SecurityAgentOutputV1,
+)
 
 from .models import (
     EvidenceReportingOutputV1,
@@ -25,6 +29,7 @@ class EvidenceReportingExecutor:
         repository_envelope = outputs.get("repository_analyst")
         browser_envelope = outputs.get("browser_automation_engineer")
         accessibility_envelope = outputs.get("accessibility_specialist")
+        security_envelope = outputs.get("security_test_engineer")
         if architecture_envelope is None:
             raise ValueError("reporting requires the approved test architecture")
 
@@ -48,6 +53,11 @@ class EvidenceReportingExecutor:
             if accessibility_envelope is not None
             else None
         )
+        security = (
+            SecurityAgentOutputV1.model_validate(security_envelope.output)
+            if security_envelope is not None
+            else None
+        )
         plan = architecture.test_plan
         artifact_refs = _unique_evidence(
             [
@@ -64,6 +74,8 @@ class EvidenceReportingExecutor:
             executed_domains.add(QualityDomain.FUNCTIONAL)
         if accessibility is not None:
             executed_domains.add(QualityDomain.ACCESSIBILITY)
+        if security is not None:
+            executed_domains.add(QualityDomain.SECURITY)
         completed_objectives = [
             objective
             for objective in plan.coverage_objectives
@@ -206,6 +218,54 @@ class EvidenceReportingExecutor:
                         evidence_refs=evidence,
                     )
                 )
+        if security is not None:
+            for finding in security.findings:
+                matching_journeys = (
+                    [
+                        journey
+                        for journey in browser.journeys
+                        if journey.environment_url
+                        in finding.affected_locations
+                    ]
+                    if browser is not None
+                    else []
+                )
+                evidence = _unique_evidence(
+                    [
+                        *finding.evidence_refs,
+                        *repository_evidence,
+                        *[
+                            evidence
+                            for journey in matching_journeys
+                            for evidence in journey.evidence_refs
+                        ],
+                    ]
+                )
+                if matching_journeys:
+                    reason = (
+                        "Passive security signal correlated with Playwright "
+                        "navigation evidence for the exact allowlisted URL. "
+                        "Exploitability is not asserted."
+                    )
+                elif correlation_context:
+                    reason = (
+                        "Passive security signal correlated with "
+                        f"{correlation_context}; no route-to-source causality "
+                        "or exploitability is asserted."
+                    )
+                else:
+                    reason = (
+                        "Passive security signal preserved without active "
+                        "exploitation or unsupported causal claims."
+                    )
+                correlated.append(
+                    CorrelatedFindingV1(
+                        primary_finding=finding,
+                        final_confidence=finding.confidence,
+                        correlation_reason=reason,
+                        evidence_refs=evidence,
+                    )
+                )
 
         residual_risks = list(plan.residual_risks)
         summary_parts: list[str] = []
@@ -237,6 +297,19 @@ class EvidenceReportingExecutor:
                 "Automated axe results cover detectable WCAG A/AA rules only "
                 "and do not establish conformance."
             )
+        if security is not None:
+            if security.coverage.mode == "runtime_passive":
+                summary_parts.append(
+                    f"Passive security audited "
+                    f"{security.coverage.routes_audited} route(s) and produced "
+                    f"{len(security.findings)} non-exploitative signal(s)"
+                )
+            else:
+                summary_parts.append(
+                    "Security reviewed the bounded repository scope; static "
+                    "source, dependency and secret scans were not executed"
+                )
+            residual_risks.extend(security.residual_risks)
         if repository is not None and browser is not None:
             residual_risks.append(
                 "Repository and runtime evidence are correlated by mission and "

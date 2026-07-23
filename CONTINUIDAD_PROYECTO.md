@@ -22,13 +22,15 @@ La fundacion ejecutable incluye:
 - executor real de Browser Automation Engineer;
 - worker axe-core y executor real de Accessibility Specialist;
 - correlacion Browser + Accessibility por URL autorizada;
+- worker HTTP/TLS y executor real de Security Test Engineer pasivo;
+- correlacion Browser + Security por URL autorizada, sin afirmar explotabilidad;
 - aplicacion web demo local y determinista;
 - frontend Next.js de QA Director conectado al control plane;
 - deteccion de monorepos y componentes con impacto de cambio por componente;
 - seleccion automatica y persistencia durable en Neon con fallback SQLite;
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
-- 61 pruebas automatizadas verdes.
+- 67 pruebas automatizadas verdes.
 
 La carpeta no estaba inicializada como repositorio Git al realizar esta actualizacion. Si se
 trabaja mediante una carpeta sincronizada, verificar que todos los archivos hayan terminado
