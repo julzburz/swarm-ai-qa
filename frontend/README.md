@@ -1,8 +1,9 @@
 # QA Director frontend
 
 Next.js App Router frontend for the hackathon control plane. It exposes only the current real
-capabilities: public GitHub repository inspection and bounded functional browser journeys.
-Security, accessibility and performance appear as unavailable instead of simulating agents.
+capabilities: public GitHub repository inspection, bounded functional browser journeys and
+automated accessibility analysis with axe-core. Security and performance appear as unavailable
+instead of simulating agents.
 
 ## Run locally
 
@@ -27,3 +28,5 @@ The proxy adds the Bearer header server-side, including for SSE, so the browser 
 the key. Neither variable may use the `NEXT_PUBLIC_` prefix.
 
 The left rail loads recent persisted runs and can reopen their state, events and final evidence.
+Accessibility can be selected alone or with Browser Functional; the report shows automated
+coverage and the manual criteria that were not verified.

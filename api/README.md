@@ -58,10 +58,10 @@ Este primer slice ejecuta misiones cuyo unico dominio es `repository`. Si la mis
 security, browser, API, performance o accessibility, el preflight devolvera los executors que
 aun faltan.
 
-## GitHub + Playwright automation
+## GitHub + Playwright + axe automation
 
-La factory compuesta agrega Browser Automation Engineer para misiones runtime del dominio
-`functional`:
+La factory compuesta agrega Browser Automation Engineer y Accessibility Specialist para
+misiones runtime de los dominios `functional` y `accessibility`:
 
 ```powershell
 python -m playwright install chromium
@@ -74,3 +74,9 @@ metodos distintos de `GET/HEAD` y destinos localhost, privados, link-local, rese
 metadata. Los subrecursos del mismo origen usan una politica separada para no confundir rutas
 navegables con CSS, JavaScript o endpoints necesarios. Los screenshots y traces se escriben
 bajo `.data/artifacts/`.
+
+Accessibility ejecuta axe-core sobre las mismas rutas permitidas y conserva un JSON redactado
+con versión, reglas, selectores y resultados. Reporting correlaciona cada finding axe con la
+navegación Playwright de la misma URL, pero declara pendientes teclado, lector de pantalla,
+zoom/reflow y estados que requieren interacción. `npm install` dentro de `frontend/` instala la
+versión fijada de axe-core; `SWARM_AXE_SCRIPT_PATH` permite usar otra ubicación del script.

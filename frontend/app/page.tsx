@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type SourceMode = "repository" | "runtime" | "combined";
 type DepthMode = "quick" | "examination";
-type Domain = "repository" | "functional";
+type Domain = "repository" | "functional" | "accessibility";
 type Phase = "configure" | "preview" | "running" | "report";
 
 type PlanTask = {
@@ -142,6 +142,7 @@ export default function QaDirectorPage() {
   const [allowedPaths, setAllowedPaths] = useState("/");
   const [repositoryDomain, setRepositoryDomain] = useState(true);
   const [functionalDomain, setFunctionalDomain] = useState(true);
+  const [accessibilityDomain, setAccessibilityDomain] = useState(true);
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -161,8 +162,15 @@ export default function QaDirectorPage() {
     const domains: Domain[] = [];
     if (hasRepository && repositoryDomain) domains.push("repository");
     if (hasRuntime && functionalDomain) domains.push("functional");
+    if (hasRuntime && accessibilityDomain) domains.push("accessibility");
     return domains;
-  }, [hasRepository, hasRuntime, repositoryDomain, functionalDomain]);
+  }, [
+    hasRepository,
+    hasRuntime,
+    repositoryDomain,
+    functionalDomain,
+    accessibilityDomain,
+  ]);
 
   function buildMission() {
     if (!objective.trim()) throw new Error("Describe el objetivo de QA.");
@@ -206,6 +214,8 @@ export default function QaDirectorPage() {
         objective:
           domain === "repository"
             ? "Reconocer componentes y riesgos del repositorio"
+            : domain === "accessibility"
+            ? "Detectar barreras WCAG automatizables con axe"
             : "Verificar los journeys aprobados en el navegador",
         domains: [domain],
       }));
@@ -402,6 +412,18 @@ export default function QaDirectorPage() {
           }>;
           residual_risks: string[];
         };
+      }
+    | undefined;
+  const accessibilityOutput = recordsByAgent.accessibility_specialist?.output?.output as
+    | {
+        coverage?: {
+          pages_scanned: number;
+          states_scanned: number;
+          automated_rules_run: number;
+          keyboard_checked: boolean;
+          manual_criteria_not_checked: string[];
+        };
+        findings?: Array<{ rule_id?: string }>;
       }
     | undefined;
 
@@ -633,7 +655,17 @@ export default function QaDirectorPage() {
                       <span>Browser functional</span>
                     </label>
                   )}
-                  {["Accessibility", "Security", "Performance"].map((domain) => (
+                  {hasRuntime && (
+                    <label className="domainChip">
+                      <input
+                        type="checkbox"
+                        checked={accessibilityDomain}
+                        onChange={(event) => setAccessibilityDomain(event.target.checked)}
+                      />
+                      <span>Accessibility · axe</span>
+                    </label>
+                  )}
+                  {["Security", "Performance"].map((domain) => (
                     <span className="domainChip disabled" key={domain}>
                       {domain} · próximo
                     </span>
@@ -766,6 +798,36 @@ export default function QaDirectorPage() {
 
               {phase === "report" && (
                 <div className="reportArea">
+                  {accessibilityOutput?.coverage && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>ACCESSIBILITY / AXE</span>
+                        <strong>
+                          {accessibilityOutput.findings?.length ?? 0} violation groups
+                        </strong>
+                      </div>
+                      <div className="componentGrid">
+                        <article className="componentCard">
+                          <small>AUTOMATED COVERAGE</small>
+                          <strong>{accessibilityOutput.coverage.pages_scanned} páginas</strong>
+                          <span>{accessibilityOutput.coverage.automated_rules_run} reglas</span>
+                        </article>
+                        <article className="componentCard">
+                          <small>MANUAL VERIFICATION</small>
+                          <strong>
+                            {accessibilityOutput.coverage.keyboard_checked
+                              ? "Keyboard verificado"
+                              : "Pendiente"}
+                          </strong>
+                          <span>No implica conformidad WCAG total</span>
+                        </article>
+                      </div>
+                      <p className="executionSummary">
+                        No verificado manualmente:{" "}
+                        {accessibilityOutput.coverage.manual_criteria_not_checked.join(" · ")}
+                      </p>
+                    </section>
+                  )}
                   {repositoryOutput?.project_profile && (
                     <section className="reportBlock">
                       <div className="blockTitle">
