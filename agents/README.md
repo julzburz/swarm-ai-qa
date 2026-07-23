@@ -17,7 +17,12 @@ Los agentes pueden compartir el mismo proceso y proveedor LLM durante el hackath
 
 ## Límite permanente: QA read-only
 
-Swarm AI QA prueba, explora, intenta romper de forma autorizada y entrega resultados. Ningún agente genera, modifica, aplica o propone código, tests, fixes, patches, commits, branches o pull requests. GitHub funciona como fuente de lectura y, con autorización opcional, como canal para publicar un Check con los resultados.
+Swarm AI QA prueba, explora, intenta romper de forma autorizada y entrega resultados. Ningún
+agente genera, modifica, aplica o propone código fuente, código de prueba ejecutable, fixes,
+patches, commits, branches o pull requests. Test Architect puede producir matrices, casos y
+Gherkin como documentación QA, nunca como archivos dentro del repositorio evaluado. GitHub
+funciona como fuente de lectura y, con autorización opcional, como canal para publicar un Check
+con los resultados.
 
 ## Estados de entrega
 

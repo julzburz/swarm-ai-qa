@@ -5,7 +5,12 @@ from uuid import uuid4
 from orchestrator.ports import AgentExecutionContextV1
 from schemas.common import QualityDomain
 from schemas.evidence import AgentOutputEnvelopeV1
-from schemas.execution import CoverageObjectiveV1, SpecialistTaskV1, TestPlanV1
+from schemas.execution import (
+    CoverageObjectiveV1,
+    SpecialistTaskV1,
+    TestCaseDesignV1,
+    TestPlanV1,
+)
 
 from .models import RepositoryAnalysisOutputV1, TestArchitectureOutputV1
 
@@ -82,11 +87,22 @@ class TestArchitectExecutor:
         plan = TestPlanV1(
             mission_id=context.mission.mission_id,
             strategy_summary=(
-                "Use repository metadata and captured manifests as the evidence baseline; "
-                "do not execute discovered project commands without separate authorization."
+                "Aplicar una estrategia basada en riesgos y permanentemente "
+                "read-only. Ejecutar solamente casos automatizados seguros "
+                "respaldados por los agentes seleccionados; conservar los "
+                "casos negativos, interactivos y UAT como trabajo manual "
+                "explícito en lugar de simular resultados."
             ),
             coverage_objectives=objectives,
             tasks=planned_tasks,
+            test_cases=_design_test_cases(
+                context,
+                domains,
+                {
+                    objective.domain: objective.risk_reference
+                    for objective in objectives
+                },
+            ),
             critical_journeys=_critical_journeys(context, analysis, domains),
             budget=context.mission.budget,
             residual_risks=residual,
@@ -149,3 +165,401 @@ def _critical_journeys(
 def _path_matches(path: str, allowed: str) -> bool:
     prefix = "/" + allowed.strip("/")
     return prefix == "/" or path == prefix or path.startswith(prefix + "/")
+
+
+def _design_test_cases(
+    context: AgentExecutionContextV1,
+    domains: set[QualityDomain],
+    risk_by_domain: dict[QualityDomain, str],
+) -> list[TestCaseDesignV1]:
+    cases: list[TestCaseDesignV1] = []
+    repository = context.mission.repository_target
+    runtime = context.mission.runtime_target
+
+    if QualityDomain.REPOSITORY in domains and repository is not None:
+        cases.append(
+            TestCaseDesignV1(
+                case_id="TC-REPOSITORY-001",
+                title="Reconocer estructura y stack del repositorio",
+                domain=QualityDomain.REPOSITORY,
+                test_type="repository",
+                priority="high",
+                risk_reference=risk_by_domain[QualityDomain.REPOSITORY],
+                preconditions=[
+                    "El repositorio GitHub público está autorizado para lectura."
+                ],
+                steps=[
+                    "Inspeccionar metadata, árbol y manifests permitidos.",
+                    "Separar componentes, lenguajes y frameworks respaldados por evidencia.",
+                ],
+                expected_result=(
+                    "El perfil tecnológico y sus incertidumbres quedan "
+                    "documentados sin ejecutar comandos ni modificar archivos."
+                ),
+                gherkin=_gherkin(
+                    "Reconocimiento read-only del repositorio",
+                    f'el repositorio "{repository.repository_id}" está autorizado',
+                    "Repository Analyst inspecciona únicamente evidencia permitida",
+                    "el stack y los componentes quedan documentados sin cambios",
+                ),
+                execution_mode="automated",
+                assigned_agent="repository_analyst",
+                target_reference=repository.repository_id,
+            )
+        )
+
+    if runtime is None:
+        if QualityDomain.SECURITY in domains and repository is not None:
+            cases.append(
+                TestCaseDesignV1(
+                    case_id="TC-SECURITY-001",
+                    title="Definir alcance de seguridad del repositorio",
+                    domain=QualityDomain.SECURITY,
+                    test_type="security",
+                    priority="high",
+                    risk_reference=risk_by_domain[QualityDomain.SECURITY],
+                    preconditions=[
+                        "Existe un snapshot read-only del repositorio."
+                    ],
+                    steps=[
+                        "Revisar el perfil y cambio capturados.",
+                        "Declarar las comprobaciones estáticas que permanecen pendientes.",
+                    ],
+                    expected_result=(
+                        "El alcance queda documentado sin afirmar que se "
+                        "ejecutó un escaneo de código o dependencias."
+                    ),
+                    gherkin=_gherkin(
+                        "Alcance de seguridad sin escaneo simulado",
+                        "existe evidencia read-only del repositorio",
+                        "Security Test Engineer revisa el alcance disponible",
+                        "los controles no ejecutados quedan explícitamente pendientes",
+                    ),
+                    execution_mode="automated",
+                    assigned_agent="security_test_engineer",
+                    target_reference=repository.repository_id,
+                )
+            )
+        return cases
+
+    base_url = str(runtime.base_url).rstrip("/")
+    for index, path in enumerate(runtime.allowed_paths, start=1):
+        url = base_url + (path if path.startswith("/") else f"/{path}")
+        suffix = f"{index:03d}"
+        if QualityDomain.FUNCTIONAL in domains:
+            cases.extend(
+                [
+                    TestCaseDesignV1(
+                        case_id=f"TC-FUNCTIONAL-{suffix}",
+                        title=f"Smoke funcional de {path}",
+                        domain=QualityDomain.FUNCTIONAL,
+                        test_type="smoke",
+                        priority="critical",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.FUNCTIONAL
+                        ],
+                        preconditions=[
+                            "La ruta pertenece al allowlist aprobado.",
+                            "La navegación no requiere una acción irreversible.",
+                        ],
+                        steps=[
+                            f"Navegar a {path} en un contexto Chromium aislado.",
+                            "Observar HTTP, errores de página, consola y red.",
+                            "Capturar screenshot y trace como evidencia.",
+                        ],
+                        expected_result=(
+                            "La página carga sin error HTTP ni excepción "
+                            "de navegador observable."
+                        ),
+                        gherkin=_gherkin(
+                            f"Smoke funcional de {path}",
+                            f'la ruta "{path}" está autorizada',
+                            "Browser Automation navega en modo read-only",
+                            "la página carga sin errores observables",
+                        ),
+                        execution_mode="automated",
+                        assigned_agent="browser_automation_engineer",
+                        target_reference=url,
+                    ),
+                    TestCaseDesignV1(
+                        case_id=f"TC-NEGATIVE-{suffix}",
+                        title=f"Validar estados negativos e interacción en {path}",
+                        domain=QualityDomain.FUNCTIONAL,
+                        test_type="negative",
+                        priority="high",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.FUNCTIONAL
+                        ],
+                        preconditions=[
+                            "Existe un entorno de staging y datos sintéticos aprobados."
+                        ],
+                        steps=[
+                            "Ejecutar entradas inválidas y límites de negocio.",
+                            "Verificar mensajes, foco y conservación segura del estado.",
+                        ],
+                        expected_result=(
+                            "Las entradas inválidas se rechazan con mensajes "
+                            "claros y sin efectos secundarios."
+                        ),
+                        gherkin=_gherkin(
+                            f"Comportamiento negativo de {path}",
+                            "existen datos sintéticos inválidos autorizados",
+                            "un QA ejecuta el flujo negativo",
+                            "el sistema rechaza la acción sin efectos secundarios",
+                        ),
+                        execution_mode="manual",
+                        assigned_agent="manual_qa_reviewer",
+                        target_reference=url,
+                    ),
+                ]
+            )
+        if QualityDomain.ACCESSIBILITY in domains:
+            cases.extend(
+                [
+                    TestCaseDesignV1(
+                        case_id=f"TC-ACCESSIBILITY-{suffix}",
+                        title=f"Escaneo automatizado WCAG de {path}",
+                        domain=QualityDomain.ACCESSIBILITY,
+                        test_type="accessibility",
+                        priority="high",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.ACCESSIBILITY
+                        ],
+                        preconditions=[
+                            "La página pública puede cargarse sin autenticación."
+                        ],
+                        steps=[
+                            f"Navegar a {path} con las políticas de red aprobadas.",
+                            "Ejecutar reglas axe-core WCAG A/AA.",
+                        ],
+                        expected_result=(
+                            "No se detectan violaciones automatizables en el "
+                            "estado inspeccionado."
+                        ),
+                        gherkin=_gherkin(
+                            f"Accesibilidad automatizada de {path}",
+                            "la página autorizada está cargada",
+                            "Accessibility Specialist ejecuta axe-core",
+                            "las barreras detectables quedan respaldadas por evidencia",
+                        ),
+                        execution_mode="automated",
+                        assigned_agent="accessibility_specialist",
+                        target_reference=url,
+                    ),
+                    TestCaseDesignV1(
+                        case_id=f"TC-A11Y-MANUAL-{suffix}",
+                        title=f"Teclado y lector de pantalla en {path}",
+                        domain=QualityDomain.ACCESSIBILITY,
+                        test_type="uat",
+                        priority="medium",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.ACCESSIBILITY
+                        ],
+                        preconditions=[
+                            "Un evaluador humano dispone de teclado y lector de pantalla."
+                        ],
+                        steps=[
+                            "Recorrer el flujo completo solo con teclado.",
+                            "Validar orden, foco, anuncios y comprensión con lector de pantalla.",
+                        ],
+                        expected_result=(
+                            "El flujo es operable y comprensible mediante "
+                            "tecnologías de asistencia."
+                        ),
+                        gherkin=_gherkin(
+                            f"Verificación manual de accesibilidad en {path}",
+                            "un evaluador usa tecnologías de asistencia",
+                            "recorre el flujo sin mouse",
+                            "el contenido mantiene foco, orden y significado",
+                        ),
+                        execution_mode="manual",
+                        assigned_agent="manual_accessibility_reviewer",
+                        target_reference=url,
+                    ),
+                ]
+            )
+        if QualityDomain.SECURITY in domains:
+            cases.extend(
+                [
+                    TestCaseDesignV1(
+                        case_id=f"TC-SECURITY-{suffix}",
+                        title=f"Auditoría pasiva de seguridad de {path}",
+                        domain=QualityDomain.SECURITY,
+                        test_type="security",
+                        priority="high",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.SECURITY
+                        ],
+                        preconditions=[
+                            "La ruta está autorizada para una solicitud GET acotada."
+                        ],
+                        steps=[
+                            "Observar HTTPS/TLS, cabeceras, CORS y cookies redactadas.",
+                            "Comparar la respuesta con la política pasiva.",
+                        ],
+                        expected_result=(
+                            "La respuesta no presenta señales pasivas de "
+                            "configuración defensiva ausente."
+                        ),
+                        gherkin=_gherkin(
+                            f"Seguridad pasiva de {path}",
+                            f'la ruta "{path}" permite inspección read-only',
+                            "Security Test Engineer observa la respuesta sin explotar",
+                            "las señales defensivas quedan documentadas",
+                        ),
+                        execution_mode="automated",
+                        assigned_agent="security_test_engineer",
+                        target_reference=url,
+                    ),
+                    TestCaseDesignV1(
+                        case_id=f"TC-SECURITY-MANUAL-{suffix}",
+                        title=f"Autorización y reglas de negocio de {path}",
+                        domain=QualityDomain.SECURITY,
+                        test_type="negative",
+                        priority="high",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.SECURITY
+                        ],
+                        preconditions=[
+                            "Existe staging, una cuenta de prueba y autorización explícita."
+                        ],
+                        steps=[
+                            "Intentar accesos con roles de prueba permitidos.",
+                            "Verificar límites de autorización sin explotar vulnerabilidades.",
+                        ],
+                        expected_result=(
+                            "Cada rol accede únicamente a operaciones y datos autorizados."
+                        ),
+                        gherkin=_gherkin(
+                            f"Autorización de negocio en {path}",
+                            "existen roles sintéticos autorizados en staging",
+                            "un QA intenta operaciones fuera de su rol",
+                            "el sistema bloquea el acceso sin revelar datos",
+                        ),
+                        execution_mode="manual",
+                        assigned_agent="manual_security_reviewer",
+                        target_reference=url,
+                    ),
+                ]
+            )
+        if QualityDomain.PERFORMANCE in domains:
+            cases.extend(
+                [
+                    TestCaseDesignV1(
+                        case_id=f"TC-PERFORMANCE-{suffix}",
+                        title=f"Performance smoke de laboratorio de {path}",
+                        domain=QualityDomain.PERFORMANCE,
+                        test_type="performance",
+                        priority="medium",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.PERFORMANCE
+                        ],
+                        preconditions=[
+                            "La ruta admite navegación pública read-only."
+                        ],
+                        steps=[
+                            "Ejecutar tres contextos Chromium aislados.",
+                            "Medir LCP, CLS, TTFB, carga y transferencia.",
+                            "Reportar p75, mediana, varianza y contexto.",
+                        ],
+                        expected_result=(
+                            "Las mediciones quedan registradas como señales "
+                            "de laboratorio, no como regresión sin baseline."
+                        ),
+                        gherkin=_gherkin(
+                            f"Performance de laboratorio de {path}",
+                            "la ruta está autorizada para un smoke single-user",
+                            "Performance Test Engineer ejecuta tres muestras aisladas",
+                            "las métricas quedan contextualizadas sin generar carga",
+                        ),
+                        execution_mode="automated",
+                        assigned_agent="performance_test_engineer",
+                        target_reference=url,
+                    ),
+                    TestCaseDesignV1(
+                        case_id=f"TC-PERF-FIELD-{suffix}",
+                        title=f"Experiencia real e interacción de {path}",
+                        domain=QualityDomain.PERFORMANCE,
+                        test_type="uat",
+                        priority="low",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.PERFORMANCE
+                        ],
+                        preconditions=[
+                            "Existe telemetría de usuarios consentida y representativa."
+                        ],
+                        steps=[
+                            "Revisar Core Web Vitals de campo al percentil 75.",
+                            "Validar INP mediante interacciones representativas.",
+                        ],
+                        expected_result=(
+                            "La experiencia real cumple los objetivos acordados "
+                            "para usuarios y dispositivos representativos."
+                        ),
+                        gherkin=_gherkin(
+                            f"Performance real de {path}",
+                            "existen datos de campo representativos y consentidos",
+                            "un responsable revisa Core Web Vitals e INP",
+                            "la decisión usa datos reales y no solo laboratorio",
+                        ),
+                        execution_mode="manual",
+                        assigned_agent="performance_owner",
+                        target_reference=url,
+                    ),
+                ]
+            )
+        if QualityDomain.API in domains:
+            cases.append(
+                TestCaseDesignV1(
+                    case_id=f"TC-API-{suffix}",
+                    title=f"Descubrir y validar contrato API asociado a {path}",
+                    domain=QualityDomain.API,
+                    test_type="api",
+                    priority="medium",
+                    risk_reference=risk_by_domain[QualityDomain.API],
+                    preconditions=[
+                        "Existe un contrato OpenAPI o endpoint GET autorizado."
+                    ],
+                    steps=[
+                        "Descubrir operaciones seguras del contrato.",
+                        "Validar status, headers y schema sin mutar datos.",
+                    ],
+                    expected_result=(
+                        "Las operaciones GET cumplen el contrato documentado."
+                    ),
+                    gherkin=_gherkin(
+                        f"Contrato API de {path}",
+                        "existe un contrato o endpoint GET autorizado",
+                        "API Test Engineer valida una respuesta read-only",
+                        "status y schema cumplen el contrato",
+                    ),
+                    execution_mode="automated",
+                    assigned_agent="api_test_engineer",
+                    target_reference=url,
+                )
+            )
+    return cases
+
+
+def _gherkin(
+    scenario: str,
+    given: str,
+    when: str,
+    then: str,
+) -> str:
+    scenario = _single_line(scenario)
+    given = _single_line(given)
+    when = _single_line(when)
+    then = _single_line(then)
+    return (
+        "# language: es\n"
+        f"Característica: {scenario}\n"
+        f"  Escenario: {scenario}\n"
+        f"    Dado {given}\n"
+        f"    Cuando {when}\n"
+        f"    Entonces {then}"
+    )
+
+
+def _single_line(value: str) -> str:
+    return " ".join(value.split())

@@ -84,6 +84,37 @@ type ArtifactSummary = {
   download_url?: string;
 };
 
+type TestCaseDesign = {
+  case_id: string;
+  title: string;
+  domain: string;
+  test_type: string;
+  priority: string;
+  risk_reference: string;
+  preconditions: string[];
+  steps: string[];
+  expected_result: string;
+  gherkin: string;
+  execution_mode: "automated" | "manual";
+  assigned_agent: string;
+  target_reference?: string;
+};
+
+type TestCaseResult = {
+  case_id: string;
+  status:
+    | "passed"
+    | "failed"
+    | "blocked"
+    | "observed"
+    | "manual_required"
+    | "not_executed";
+  observation: string;
+  executed_by?: string;
+  evidence_refs: Array<{ uri: string }>;
+  finding_ids: string[];
+};
+
 const API = "/control-plane";
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 const EVENT_TYPES = [
@@ -445,6 +476,14 @@ export default function QaDirectorPage() {
         };
       }
     | undefined;
+  const testDesignOutput = recordsByAgent.test_architect?.output?.output as
+    | {
+        test_plan?: {
+          strategy_summary: string;
+          test_cases: TestCaseDesign[];
+        };
+      }
+    | undefined;
   const reportOutput = recordsByAgent.evidence_reporting_analyst?.output?.output as
     | {
         report?: {
@@ -460,6 +499,7 @@ export default function QaDirectorPage() {
             correlation_reason: string;
           }>;
           residual_risks: string[];
+          test_case_results: TestCaseResult[];
         };
       }
     | undefined;
@@ -514,6 +554,13 @@ export default function QaDirectorPage() {
         baseline_compared?: boolean;
       }
     | undefined;
+  const testCases = testDesignOutput?.test_plan?.test_cases ?? [];
+  const testCaseResults = new Map(
+    (reportOutput?.report?.test_case_results ?? []).map((result) => [
+      result.case_id,
+      result,
+    ]),
+  );
 
   return (
     <main className="shell">
@@ -901,6 +948,110 @@ export default function QaDirectorPage() {
 
               {phase === "report" && (
                 <div className="reportArea">
+                  {!!testCases.length && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>TEST DESIGN STUDIO / TRACEABILITY</span>
+                        <strong>{testCases.length} casos diseñados</strong>
+                      </div>
+                      <p className="executionSummary">
+                        {testDesignOutput?.test_plan?.strategy_summary}
+                      </p>
+                      <div className="testMatrixStats">
+                        <span>
+                          <strong>
+                            {testCases.filter(
+                              (testCase) => testCase.execution_mode === "automated",
+                            ).length}
+                          </strong>
+                          automatizados
+                        </span>
+                        <span>
+                          <strong>
+                            {testCases.filter(
+                              (testCase) => testCase.execution_mode === "manual",
+                            ).length}
+                          </strong>
+                          manuales
+                        </span>
+                        <span>
+                          <strong>
+                            {[...testCaseResults.values()].filter(
+                              (result) => result.status === "failed",
+                            ).length}
+                          </strong>
+                          fallidos
+                        </span>
+                        <span>
+                          <strong>
+                            {[...testCaseResults.values()].filter(
+                              (result) => result.status === "manual_required",
+                            ).length}
+                          </strong>
+                          pendientes
+                        </span>
+                      </div>
+                      <div className="testMatrix">
+                        {testCases.map((testCase) => {
+                          const result = testCaseResults.get(testCase.case_id);
+                          const status = result?.status ?? "planned";
+                          return (
+                            <details className="testCase" key={testCase.case_id}>
+                              <summary>
+                                <span className="testCaseId">{testCase.case_id}</span>
+                                <span className="testCaseTitle">
+                                  <strong>{testCase.title}</strong>
+                                  <small>
+                                    {testCase.domain} · {testCase.test_type} ·{" "}
+                                    {testCase.execution_mode}
+                                  </small>
+                                </span>
+                                <span className={`caseStatus ${status}`}>
+                                  {status.replaceAll("_", " ")}
+                                </span>
+                              </summary>
+                              <div className="testCaseBody">
+                                <div>
+                                  <small>PRECONDICIONES</small>
+                                  <ul>
+                                    {testCase.preconditions.map((item) => (
+                                      <li key={item}>{item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <small>PASOS</small>
+                                  <ol>
+                                    {testCase.steps.map((item) => (
+                                      <li key={item}>{item}</li>
+                                    ))}
+                                  </ol>
+                                </div>
+                                <div className="testExpected">
+                                  <small>RESULTADO ESPERADO</small>
+                                  <p>{testCase.expected_result}</p>
+                                </div>
+                                {result && (
+                                  <div className="testObserved">
+                                    <small>RESULTADO OBSERVADO</small>
+                                    <p>{result.observation}</p>
+                                    <span>
+                                      {result.evidence_refs.length} evidencias ·{" "}
+                                      {result.finding_ids.length} findings
+                                    </span>
+                                  </div>
+                                )}
+                                <details className="gherkin">
+                                  <summary>VER ESCENARIO BDD / GHERKIN</summary>
+                                  <pre>{testCase.gherkin}</pre>
+                                </details>
+                              </div>
+                            </details>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
                   {performanceOutput?.coverage && (
                     <section className="reportBlock">
                       <div className="blockTitle">

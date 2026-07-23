@@ -5,6 +5,10 @@ capabilities: public GitHub repository inspection, bounded functional browser jo
 automated accessibility analysis with axe-core, passive runtime security inspection and
 isolated single-user performance smoke measurements.
 
+Completed runs include Test Design Studio: a compact risk-linked matrix with preconditions,
+steps, expected results and Spanish BDD/Gherkin. Automated cases receive only evidence-backed
+statuses; negative, keyboard, authenticated and UAT cases remain visibly `manual_required`.
+
 ## Run locally
 
 Start the FastAPI automation factory from the project root:

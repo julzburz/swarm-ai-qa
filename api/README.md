@@ -50,6 +50,11 @@ endpoints con el mismo Bearer opcional de `/v1/*`.
 4. Enviar `{ "mission": ..., "approved": true }` a `POST /v1/runs`.
 5. Consultar el estado o suscribirse a `/events/stream`.
 
+Test Architect conserva `test_cases` dentro de `TestPlanV1`. Cada caso incluye riesgo,
+prioridad, precondiciones, pasos, resultado esperado, modo de ejecución y escenario
+BDD/Gherkin. Reporting publica `test_case_results` y separa casos automatizados con evidencia
+de casos `manual_required`; diseñar un caso nunca cuenta como haberlo ejecutado.
+
 La aplicacion por defecto no registra executors demo. Si falta alguno, responde `503`
 con la lista exacta; nunca presenta actividad o resultados ficticios.
 

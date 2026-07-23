@@ -73,6 +73,67 @@ class TestDataReferenceV1(StrictModel):
         return self
 
 
+class TestCaseDesignV1(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    case_id: NonEmptyStr
+    title: NonEmptyStr
+    domain: QualityDomain
+    test_type: Literal[
+        "smoke",
+        "functional",
+        "negative",
+        "repository",
+        "accessibility",
+        "security",
+        "performance",
+        "api",
+        "uat",
+    ]
+    priority: Literal["critical", "high", "medium", "low"]
+    risk_reference: NonEmptyStr
+    preconditions: list[NonEmptyStr] = Field(min_length=1)
+    steps: list[NonEmptyStr] = Field(min_length=1)
+    expected_result: NonEmptyStr
+    gherkin: NonEmptyStr
+    execution_mode: Literal["automated", "manual"]
+    assigned_agent: NonEmptyStr
+    target_reference: NonEmptyStr | None = None
+
+
+class TestCaseExecutionV1(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    case_id: NonEmptyStr
+    status: Literal[
+        "passed",
+        "failed",
+        "blocked",
+        "observed",
+        "manual_required",
+        "not_executed",
+    ]
+    observation: NonEmptyStr
+    executed_by: NonEmptyStr | None = None
+    evidence_refs: list[EvidenceRefV1] = Field(default_factory=list)
+    finding_ids: list[UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def execution_status_is_truthful(self) -> "TestCaseExecutionV1":
+        if self.status == "manual_required" and (
+            self.executed_by is not None
+            or self.evidence_refs
+            or self.finding_ids
+        ):
+            raise ValueError(
+                "A manual-required case cannot claim execution, evidence or findings"
+            )
+        if self.status in {"passed", "failed", "observed"}:
+            if self.executed_by is None or not self.evidence_refs:
+                raise ValueError(
+                    "Completed cases require an executor and evidence"
+                )
+        return self
+
+
 class TestPlanV1(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     plan_id: UUID = Field(default_factory=uuid4)
@@ -80,6 +141,7 @@ class TestPlanV1(StrictModel):
     strategy_summary: NonEmptyStr
     coverage_objectives: list[CoverageObjectiveV1] = Field(min_length=1)
     tasks: list[SpecialistTaskV1] = Field(min_length=1)
+    test_cases: list[TestCaseDesignV1] = Field(default_factory=list)
     critical_journeys: list[NonEmptyStr] = Field(default_factory=list)
     budget: BudgetV1
     residual_risks: list[NonEmptyStr] = Field(default_factory=list)
@@ -96,6 +158,9 @@ class TestPlanV1(StrictModel):
                 raise ValueError(f"Task {task.task_id} has unknown dependencies: {unknown}")
         if sum(task.estimated_requests for task in self.tasks) > self.budget.max_requests:
             raise ValueError("Planned requests exceed the mission budget")
+        case_ids = [test_case.case_id for test_case in self.test_cases]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("case_id values must be unique")
         return self
 
 

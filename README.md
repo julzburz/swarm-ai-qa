@@ -64,6 +64,9 @@ addresses.
 - Public GitHub repository and optional pull-request inspection using bounded REST `GET` requests.
 - Canonical repository validation and explicit private-repository server allowlist.
 - Language and framework recognition from repository trees and captured manifests.
+- Test Design Studio with risk-linked positive, negative and manual test cases.
+- Reviewable Spanish BDD/Gherkin for every designed case.
+- Truthful case lifecycle: planned, passed, failed, observed, blocked, manual or unexecuted.
 - Monorepo component separation with correct working directories.
 - Pull-request impact grouped by affected component.
 - Conservative Next.js route candidates derived from verifiable file conventions.
@@ -169,7 +172,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 76 tests
+Ran 80 tests
 OK
 ```
 
@@ -205,6 +208,8 @@ workers/       Bounded tool workers
 - Screenshots and traces must not contain real sensitive user data.
 - Performance is a small laboratory smoke, not field telemetry: it does not measure INP,
   representative user conditions or regression without a baseline.
+- Negative, keyboard, authenticated and UAT cases are designed but remain manual until a safe
+  executor and explicit authorization exist.
 - Security is passive runtime inspection only; source, dependency, authenticated and active
   exploit testing remain out of scope.
 - axe-core detects only automatable issues; keyboard, screen-reader and full WCAG conformance
