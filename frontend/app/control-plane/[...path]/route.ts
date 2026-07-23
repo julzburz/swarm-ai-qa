@@ -20,7 +20,15 @@ async function proxy(request: NextRequest, context: RouteContext) {
   headers.delete("authorization");
   headers.delete("connection");
   headers.delete("content-length");
+  headers.delete("expect");
   headers.delete("host");
+  headers.delete("keep-alive");
+  headers.delete("proxy-authenticate");
+  headers.delete("proxy-authorization");
+  headers.delete("te");
+  headers.delete("trailer");
+  headers.delete("transfer-encoding");
+  headers.delete("upgrade");
 
   const apiKey = process.env.SWARM_CONTROL_PLANE_API_KEY?.trim();
   if (apiKey) {
