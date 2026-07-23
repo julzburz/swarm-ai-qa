@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type SourceMode = "repository" | "runtime" | "combined";
 type DepthMode = "quick" | "examination";
@@ -48,8 +48,24 @@ type TaskRecord = {
 type RunState = {
   run_id: string;
   status: string;
+  mission: Record<string, unknown>;
+  plan: PlanPreview["plan"];
   task_records: Record<string, TaskRecord>;
+  created_at: string;
+  updated_at: string;
   error?: string;
+};
+
+type RunSummary = {
+  run_id: string;
+  objective: string;
+  mode: string;
+  source: SourceMode;
+  status: string;
+  agent_count: number;
+  completed_agents: number;
+  created_at: string;
+  updated_at: string;
 };
 
 const API = "/control-plane";
@@ -129,9 +145,15 @@ export default function QaDirectorPage() {
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
+  const [history, setHistory] = useState<RunSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const streamRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    void loadHistory();
+    return () => streamRef.current?.close();
+  }, []);
 
   const hasRepository = sourceMode !== "runtime";
   const hasRuntime = sourceMode !== "repository";
@@ -231,6 +253,54 @@ export default function QaDirectorPage() {
     if (TERMINAL.has(state.status)) {
       streamRef.current?.close();
       setPhase(state.status === "completed" ? "report" : "running");
+      void loadHistory();
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const response = await fetch(`${API}/v1/runs?limit=6`, {
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      setHistory(await response.json());
+    } catch {
+      // The mission form remains usable when the backend is temporarily offline.
+    }
+  }
+
+  async function openHistoryRun(summary: RunSummary) {
+    setBusy(true);
+    setError("");
+    streamRef.current?.close();
+    try {
+      const [stateResponse, eventsResponse] = await Promise.all([
+        fetch(`${API}/v1/runs/${summary.run_id}`, { cache: "no-store" }),
+        fetch(`${API}/v1/runs/${summary.run_id}/events`, { cache: "no-store" }),
+      ]);
+      if (!stateResponse.ok || !eventsResponse.ok) {
+        throw new Error("No fue posible recuperar este análisis.");
+      }
+      const state: RunState = await stateResponse.json();
+      setRun(state);
+      setPreview({
+        mission: state.mission,
+        plan: state.plan,
+        missing_executors: [],
+        executable: true,
+      });
+      setEvents(await eventsResponse.json());
+      setPhase(state.status === "completed" ? "report" : "running");
+      if (!TERMINAL.has(state.status)) {
+        openEventStream(
+          state.run_id,
+          `/v1/runs/${state.run_id}/events/stream`,
+        );
+      }
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -268,6 +338,7 @@ export default function QaDirectorPage() {
       setPhase("running");
       setEvents([]);
       await refreshRun(payload.run_id);
+      await loadHistory();
       openEventStream(payload.run_id, payload.event_stream_url);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -387,6 +458,33 @@ export default function QaDirectorPage() {
           <p className="railNote">
             Cada estado proviene del backend. No hay agentes ni actividad simulada.
           </p>
+          <div className="history">
+            <div className="historyTitle">
+              <span>HISTORIAL NEON</span>
+              <small>{history.length}</small>
+            </div>
+            {history.map((item) => (
+              <button
+                className={`historyRun ${run?.run_id === item.run_id ? "selected" : ""}`}
+                disabled={busy}
+                key={item.run_id}
+                onClick={() => void openHistoryRun(item)}
+                type="button"
+              >
+                <span>
+                  {item.source} · {item.status}
+                </span>
+                <strong>{item.objective}</strong>
+                <small>
+                  {item.completed_agents}/{item.agent_count} agentes ·{" "}
+                  {new Date(item.updated_at).toLocaleDateString()}
+                </small>
+              </button>
+            ))}
+            {!history.length && (
+              <p className="historyEmpty">Los análisis terminados aparecerán aquí.</p>
+            )}
+          </div>
         </aside>
 
         <section className="content">

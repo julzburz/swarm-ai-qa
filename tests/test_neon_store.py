@@ -121,6 +121,7 @@ class NeonRunStoreCompatibilityTests(unittest.IsolatedAsyncioTestCase):
             state = await orchestrator.execute(current_mission, plan)
             self.assertEqual(state.status, RunStatus.COMPLETED)
             self.assertEqual(store.get_run(state.run_id).status, RunStatus.COMPLETED)
+            self.assertEqual(store.list_runs()[0].run_id, state.run_id)
             self.assertGreater(len(store.list_events(state.run_id)), 0)
 
             with engine.connect() as connection:
@@ -202,11 +203,13 @@ class NeonApiRestartTests(unittest.TestCase):
             try:
                 with TestClient(reopened_app) as client:
                     restored = client.get(f"/v1/runs/{run_id}")
+                    history = client.get("/v1/runs")
                 self.assertEqual(restored.status_code, 200)
                 self.assertEqual(
                     restored.json()["status"],
                     RunStatus.COMPLETED.value,
                 )
+                self.assertEqual(history.json()[0]["run_id"], run_id)
             finally:
                 reopened_store.close()
 

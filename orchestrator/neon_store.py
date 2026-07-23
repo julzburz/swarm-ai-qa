@@ -106,6 +106,20 @@ class NeonRunStore:
             return None
         return RunStateV1.model_validate(_json_value(row.state_json))
 
+    def list_runs(self, limit: int = 20, offset: int = 0) -> list[RunStateV1]:
+        statement = (
+            select(runs.c.state_json)
+            .order_by(runs.c.updated_at.desc(), runs.c.run_id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        with self.engine.connect() as connection:
+            rows = connection.execute(statement).all()
+        return [
+            RunStateV1.model_validate(_json_value(row.state_json))
+            for row in rows
+        ]
+
     def append_event(self, event: RunEventV1) -> RunEventV1:
         event_without_sequence = event.model_copy(update={"sequence": None})
         with self.engine.begin() as connection:

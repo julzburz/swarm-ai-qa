@@ -24,7 +24,9 @@ La fundacion ejecutable incluye:
 - frontend Next.js de QA Director conectado al control plane;
 - deteccion de monorepos y componentes con impacto de cambio por componente;
 - seleccion automatica y persistencia durable en Neon con fallback SQLite;
-- 54 pruebas automatizadas verdes.
+- autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
+- historial navegable de runs reales desde QA Director;
+- 57 pruebas automatizadas verdes.
 
 La carpeta no estaba inicializada como repositorio Git al realizar esta actualizacion. Si se
 trabaja mediante una carpeta sincronizada, verificar que todos los archivos hayan terminado
@@ -332,7 +334,7 @@ python -m unittest discover -s tests -v
 Resultado al 22 de julio de 2026:
 
 ```text
-Ran 54 tests
+Ran 57 tests
 OK
 ```
 
@@ -405,8 +407,8 @@ La aplicacion demo tambien se valido en el navegador integrado:
 - La factory generica `api.app:create_app` sigue sin executors; para GitHub se debe usar
   `api.github_factory:create_github_app`.
 - Todavia no existen endpoints de projects, targets, findings, artifacts o GitHub Checks.
-- No hay autenticacion ni autorizacion HTTP implementadas.
-- El frontend actual no tiene login, listado persistente de proyectos ni historial navegable.
+- La autenticacion actual usa una sola clave Bearer; aun no existen usuarios, sesiones ni roles.
+- El frontend tiene historial de runs, pero aun no tiene listado persistente de proyectos.
 - La UI habilita unicamente Repository y Browser Functional; las demas areas se muestran
   explicitamente como pendientes.
 - Browser Automation es navigation-only: todavia no ejecuta clicks, formularios ni login.
@@ -428,14 +430,13 @@ La aplicacion demo tambien se valido en el navegador integrado:
 
 ## Siguiente corte recomendado
 
-La inteligencia multicomponente, el frontend mínimo de QA Director y la persistencia automática
-en Neon ya están implementados. El siguiente corte recomendado es seguridad e historial:
+La inteligencia multicomponente, QA Director, Neon, autenticación Bearer e historial de runs ya
+están implementados. El siguiente corte recomendado amplía la cobertura real del enjambre:
 
-1. Implementar autenticación HTTP mínima antes de cualquier despliegue público.
-2. Agregar endpoints de listado de runs, findings y artefactos para el dashboard.
-3. Implementar historial navegable en QA Director.
-4. Integrar Accessibility con axe y correlación Browser + Accessibility.
-5. Después incorporar Security básico y Performance smoke sin pruebas destructivas.
+1. Integrar Accessibility con axe y correlación Browser + Accessibility.
+2. Agregar endpoints dedicados de findings y artefactos para el dashboard.
+3. Después incorporar Security básico y Performance smoke sin pruebas destructivas.
+4. Diseñar usuarios y roles solo si el proyecto evoluciona después del hackathon.
 
 Trabajo complementario pendiente: endpoints de findings y artefactos, persistencia/reanudacion
 de tareas tras reiniciar el proceso y almacenamiento externo de artefactos.

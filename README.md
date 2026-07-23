@@ -116,7 +116,8 @@ npm run dev
 Open `http://localhost:3000`.
 
 The frontend proxies `/control-plane/*` to FastAPI through the server-side
-`SWARM_CONTROL_PLANE_URL` setting. Secrets must never use the `NEXT_PUBLIC_` prefix.
+`SWARM_CONTROL_PLANE_URL` setting. When API authentication is enabled, the server-side proxy
+injects `SWARM_CONTROL_PLANE_API_KEY`; secrets must never use the `NEXT_PUBLIC_` prefix.
 
 ## Environment configuration
 
@@ -129,6 +130,7 @@ Important variables:
 | `DATABASE_URL` | Pooled Neon application connection |
 | `DATABASE_DIRECT_URL` | Direct Neon connection for migrations |
 | `SWARM_STORAGE_BACKEND` | `auto`, `neon` or `sqlite` store selection |
+| `SWARM_API_KEY` | Optional Bearer key protecting every `/v1` route |
 | `GITHUB_TOKEN` | Read-only access for explicitly allowlisted private repositories |
 | `SWARM_GITHUB_ALLOWED_PRIVATE_REPOSITORIES` | Canonical private repository IDs |
 | `SWARM_SQLITE_PATH` | Local checkpoint database |
@@ -145,7 +147,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 54 tests
+Ran 57 tests
 OK
 ```
 
@@ -176,7 +178,7 @@ workers/       Bounded tool workers
 
 ## Current limitations
 
-- HTTP authentication must be added before a public deployment.
+- Bearer authentication is single-tenant; user accounts and role-based access are not implemented.
 - Browser automation is navigation-only: no login, clicks or form submission yet.
 - Screenshots and traces must not contain real sensitive user data.
 - Accessibility, security and performance agents are visible as pending and never simulated.
