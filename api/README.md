@@ -44,6 +44,16 @@ endpoints con el mismo Bearer opcional de `/v1/*`.
 
 ## Flujo seguro
 
+Antes de aprobar, el control plane puede combinar reconocimiento read-only de GitHub con
+reconocimiento HTTP acotado. `runtime_reconnaissance` informa disponibilidad, rutas same-origin
+descubiertas, rutas incluidas en el plan y contrato OpenAPI detectado. La misión enriquecida que
+devuelve el preview es la que se aprueba y ejecuta.
+
+Las modalidades quick, targeted y full usan presupuestos diferentes. Reporting espera a que
+todos los especialistas estén en estado terminal, aunque alguno falle. En ese caso genera de
+todas formas el informe profesional, declara limitaciones y el run termina como
+`completed_with_warnings`. Los informes HTML y Markdown se publican como artifacts descargables.
+
 1. Enviar una `UserMissionRequestV1` a `POST /v1/plans/preview`.
 2. Si existe un target GitHub, el backend realiza reconocimiento read-only y devuelve
    `reconnaissance`, `planning_basis=repository_reconnaissance` y un plan construido
@@ -124,7 +134,8 @@ cabeceras defensivas, CORS y atributos de cookies sin conservar sus valores. Usa
 `GET` acotadas, bloquea redirects fuera del origen o allowlist y no realiza fuzzing,
 explotacion, autenticacion ni cambios en el target.
 
-Performance ejecuta tres muestras de laboratorio en contextos Chromium nuevos por cada ruta
-permitida. Conserva LCP, CLS, TTFB, tiempos de carga, transferencia y cantidad de recursos con
+Performance ejecuta dos, tres o cinco muestras de laboratorio en contextos Chromium nuevos por
+cada ruta permitida según la profundidad elegida. Conserva LCP, CLS, TTFB, tiempos de carga,
+transferencia y cantidad de recursos con
 mediana, p75 y varianza. Es siempre una prueba single-user de lectura: no genera carga, no mide
 INP ni afirma una regresion sin baseline.

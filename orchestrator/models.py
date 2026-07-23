@@ -18,6 +18,7 @@ class RunStatus(StrEnum):
     RUNNING = "running"
     CANCELLING = "cancelling"
     COMPLETED = "completed"
+    COMPLETED_WITH_WARNINGS = "completed_with_warnings"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -28,6 +29,7 @@ class RunEventType(StrEnum):
     RUN_STARTED = "run.started"
     RUN_CANCELLATION_REQUESTED = "run.cancellation_requested"
     RUN_COMPLETED = "run.completed"
+    RUN_COMPLETED_WITH_WARNINGS = "run.completed_with_warnings"
     RUN_FAILED = "run.failed"
     RUN_CANCELLED = "run.cancelled"
     AGENT_STARTED = "agent.started"
@@ -92,4 +94,3 @@ class RunStateV1(StrictModel):
         if self.plan.mission_id != self.mission.mission_id:
             raise ValueError("Plan and mission IDs must match")
         return self
-

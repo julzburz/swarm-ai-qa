@@ -50,7 +50,12 @@ from .results import (
 )
 
 
-TERMINAL_STATUSES = {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
+TERMINAL_STATUSES = {
+    RunStatus.COMPLETED,
+    RunStatus.COMPLETED_WITH_WARNINGS,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+}
 
 
 def create_app(
@@ -156,12 +161,21 @@ def create_app(
                     "message": str(exc),
                 },
             ) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "reconnaissance_failed",
+                    "message": str(exc),
+                },
+            ) from exc
         plan = preview.plan
         missing = controller.missing_executors(plan)
         return PlanPreviewResponseV1(
-            mission=mission,
+            mission=preview.mission,
             plan=plan,
             reconnaissance=preview.reconnaissance,
+            runtime_reconnaissance=preview.runtime_reconnaissance,
             planning_basis=preview.planning_basis,
             missing_executors=missing,
             executable=not missing,

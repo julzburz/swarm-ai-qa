@@ -21,6 +21,9 @@ class BrowserWorkerRequestV1(StrictModel):
     ] = "navigation_only"
     allow_get_form_submission: bool = False
     max_interactions_per_path: int = Field(ge=0, le=10, default=3)
+    viewport_profiles: list[
+        Literal["desktop", "tablet", "mobile"]
+    ] = Field(default_factory=lambda: ["desktop"], min_length=1)
     max_requests: int = Field(gt=0, le=10_000)
     timeout_seconds: int = Field(gt=0, le=86_400)
 
@@ -42,6 +45,7 @@ class BrowserInteractionStepCaptureV1(StrictModel):
 class BrowserJourneyCaptureV1(StrictModel):
     name: NonEmptyStr
     path: NonEmptyStr
+    viewport_profile: Literal["desktop", "tablet", "mobile"] = "desktop"
     final_url: NonEmptyStr
     status: Literal["passed", "failed", "blocked"]
     http_status: int | None = Field(default=None, ge=100, le=599)

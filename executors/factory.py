@@ -15,6 +15,7 @@ from .api import ApiTestExecutor
 from .browser import BrowserAutomationExecutor
 from .performance import PerformanceExecutor
 from .reporting import EvidenceReportingExecutor
+from .release import ReleaseManagerExecutor
 from .repository import RepositoryAnalystExecutor
 from .security import SecurityExecutor
 from .test_architect import TestArchitectExecutor
@@ -25,7 +26,12 @@ def build_github_registry(client: GitHubReadClient | None = None) -> AgentRegist
     registry = AgentRegistry()
     registry.register(RepositoryAnalystExecutor(github))
     registry.register(TestArchitectExecutor())
-    registry.register(EvidenceReportingExecutor())
+    registry.register(
+        EvidenceReportingExecutor(
+            os.getenv("SWARM_ARTIFACT_ROOT", ".data/artifacts")
+        )
+    )
+    registry.register(ReleaseManagerExecutor())
     return registry
 
 

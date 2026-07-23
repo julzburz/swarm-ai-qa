@@ -46,6 +46,11 @@ class RuleBasedQaDirector:
         change_impact: ChangeImpactMapV1 | None = None,
     ) -> SwarmExecutionPlanV1:
         domains = self._applicable_domains(mission)
+        route_count = (
+            len(mission.runtime_target.allowed_paths)
+            if mission.runtime_target is not None
+            else 0
+        )
         tasks: list[SpecialistTaskV1] = []
         reasons: dict[str, str] = {}
         prerequisite_ids: list[UUID] = []
@@ -95,7 +100,11 @@ class RuleBasedQaDirector:
                 capability_ids=capabilities,
                 risk_refs=self._risk_refs(domain, mission, change_impact),
                 depends_on=dependencies,
-                estimated_requests=self._request_estimate(domain),
+                estimated_requests=self._request_estimate(
+                    domain,
+                    mission.mode,
+                    route_count,
+                ),
             )
             tasks.append(task)
             specialist_ids.append(task.task_id)
@@ -120,6 +129,7 @@ class RuleBasedQaDirector:
             capability_ids=["normalize_finding", "correlate_evidence", "publish_run_report"],
             risk_refs=[f"mission:{mission.mission_id}:evidence"],
             depends_on=evidence_dependencies,
+            dependency_policy="all_terminal",
             estimated_requests=0,
         )
         tasks.append(report_task)
@@ -164,7 +174,11 @@ class RuleBasedQaDirector:
             tasks=tasks,
             selected_agents=set(reasons),
             agent_selection_reasons=reasons,
-            estimated_duration_seconds=max(60, 30 * len(tasks)),
+            estimated_duration_seconds=self._duration_estimate(
+                mission.mode,
+                len(tasks),
+                route_count,
+            ),
             estimated_requests=estimated_requests,
             production_restrictions=restrictions,
             requires_approval=True,
@@ -216,14 +230,39 @@ class RuleBasedQaDirector:
             )
         return refs
 
-    def _request_estimate(self, domain: QualityDomain) -> int:
+    def _request_estimate(
+        self,
+        domain: QualityDomain,
+        mode: MissionMode,
+        route_count: int,
+    ) -> int:
+        routes = max(1, route_count)
+        repetitions = 5 if mode == MissionMode.FULL_EXAMINATION else 3
+        viewport_count = {
+            MissionMode.QUICK_TASK: 1,
+            MissionMode.TARGETED_EXAMINATION: 2,
+            MissionMode.FULL_EXAMINATION: 3,
+        }[mode]
         return {
-            QualityDomain.FUNCTIONAL: 30,
-            QualityDomain.API: 20,
-            QualityDomain.SECURITY: 10,
-            QualityDomain.ACCESSIBILITY: 15,
-            QualityDomain.PERFORMANCE: 15,
+            QualityDomain.FUNCTIONAL: 10 * viewport_count * routes,
+            QualityDomain.API: 30 if mode == MissionMode.FULL_EXAMINATION else 20,
+            QualityDomain.SECURITY: 2 * routes,
+            QualityDomain.ACCESSIBILITY: 15 * routes,
+            QualityDomain.PERFORMANCE: 7 * repetitions * routes,
         }.get(domain, 0)
+
+    def _duration_estimate(
+        self,
+        mode: MissionMode,
+        task_count: int,
+        route_count: int,
+    ) -> int:
+        routes = max(1, route_count)
+        if mode == MissionMode.QUICK_TASK:
+            return max(120, 30 * task_count)
+        if mode == MissionMode.TARGETED_EXAMINATION:
+            return max(300, 45 * task_count + 35 * routes)
+        return max(900, 75 * task_count + 75 * routes)
 
     def _repository_reason(self, profile: ProjectProfileV1 | None) -> str:
         if profile is None:

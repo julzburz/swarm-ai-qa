@@ -35,6 +35,11 @@ SENSITIVE_FIELD_PATTERN = re.compile(
     r"cvv|cvc|iban|account|ssn|social|document|dni)\b"
 )
 SAFE_INPUT_TYPES = {"text", "search", "email", "tel", "url", "number"}
+VIEWPORTS = {
+    "desktop": {"width": 1365, "height": 768},
+    "tablet": {"width": 820, "height": 1180},
+    "mobile": {"width": 390, "height": 844},
+}
 
 
 class PlaywrightBrowserWorker:
@@ -114,28 +119,35 @@ class PlaywrightBrowserWorker:
             )
 
             try:
-                for index, path in enumerate(_unique_paths(request.allowed_paths), start=1):
-                    captures.append(
-                        await self._navigate(
-                            page,
-                            base_url,
-                            path,
-                            task_dir / f"journey-{index}.png",
-                            console_errors,
-                            page_errors,
-                            request_failures,
-                            interaction_mode=request.interaction_mode,
-                            allow_get_form_submission=(
-                                request.allow_get_form_submission
-                            ),
-                            max_interactions=(
-                                request.max_interactions_per_path
-                            ),
-                            allowed_paths=request.allowed_paths,
-                            blocked_paths=request.blocked_paths,
-                            blocked_interactions=blocked_interactions,
-                        )
+                index = 0
+                for viewport_profile in request.viewport_profiles:
+                    await page.set_viewport_size(
+                        VIEWPORTS[viewport_profile]
                     )
+                    for path in _unique_paths(request.allowed_paths):
+                        index += 1
+                        captures.append(
+                            await self._navigate(
+                                page,
+                                base_url,
+                                path,
+                                task_dir / f"journey-{index}.png",
+                                console_errors,
+                                page_errors,
+                                request_failures,
+                                viewport_profile=viewport_profile,
+                                interaction_mode=request.interaction_mode,
+                                allow_get_form_submission=(
+                                    request.allow_get_form_submission
+                                ),
+                                max_interactions=(
+                                    request.max_interactions_per_path
+                                ),
+                                allowed_paths=request.allowed_paths,
+                                blocked_paths=request.blocked_paths,
+                                blocked_interactions=blocked_interactions,
+                            )
+                        )
             finally:
                 await context.tracing.stop(path=trace_path)
                 await context.close()
@@ -162,6 +174,7 @@ class PlaywrightBrowserWorker:
         page_errors: list[str],
         request_failures: list[str],
         *,
+        viewport_profile: str,
         interaction_mode: str,
         allow_get_form_submission: bool,
         max_interactions: int,
@@ -222,8 +235,9 @@ class PlaywrightBrowserWorker:
             page_errors.append(_redact_text(f"ScreenshotError: {exc}"))
             status = "failed"
         return BrowserJourneyCaptureV1(
-            name=f"Navigate {path}",
+            name=f"Navigate {path} [{viewport_profile}]",
             path=path,
+            viewport_profile=viewport_profile,
             final_url=_safe_url(final_url),
             status=status,
             http_status=http_status,

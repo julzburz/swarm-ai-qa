@@ -546,7 +546,7 @@ positiva y el mismatch de schema se cubren de forma real contra `demo_web`.
 ## Limitaciones conocidas
 
 - Hay executors reales para Repository Analyst, Test Architect, Browser Automation, API,
-  Accessibility, Security, Performance y Reporting.
+  Accessibility, Security, Performance, Reporting y Release Manager.
 - La factory generica `api.app:create_app` sigue sin executors; para GitHub se debe usar
   `api.github_factory:create_github_app`.
 - Todavia no existen endpoints de projects, targets o GitHub Checks.
@@ -589,6 +589,18 @@ El siguiente corte recomendado es preparar la demostracion publica sin ampliar e
 
 Trabajo complementario pendiente: reanudacion de tareas tras reiniciar el proceso y
 almacenamiento externo de artefactos.
+
+## Actualización 0.12 — profundidad y reporte resiliente
+
+- El preview combina reconocimiento GitHub con reconocimiento HTTP acotado de producción.
+- QA Director ofrece trabajo rápido, examen coordinado y examinación completa.
+- Las rutas same-origin descubiertas se incorporan a la misión aprobada y generan casos reales.
+- Performance usa 2, 3 o 5 muestras por ruta según profundidad.
+- Reporting usa dependencias `all_terminal`: un especialista fallido ya no elimina el informe.
+- `completed_with_warnings` distingue cobertura parcial de un fallo total del control plane.
+- El informe profesional incluye veredicto, cobertura, casos, hallazgos, limitaciones y riesgos.
+- HTML y Markdown se materializan como artifacts descargables con integridad SHA-256.
+- La imagen Railway incluye axe-core 4.11.4 mediante una etapa Docker dedicada.
 
 ## Referencias principales
 

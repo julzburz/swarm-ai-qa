@@ -26,7 +26,9 @@ a real quality-engineering team:
 6. **Accessibility Specialist** runs axe-core against approved pages.
 7. **Security Test Engineer** passively audits authorized HTTP/TLS responses.
 8. **Performance Test Engineer** measures isolated single-user lab performance signals.
-9. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
+9. **Evidence & Reporting Analyst** always consolidates successful, failed and skipped work into
+   a professional HTML/Markdown report without inventing findings or causality.
+10. **Release Manager** converts full-examination evidence into a bounded recommendation.
 
 ```mermaid
 flowchart LR
@@ -66,6 +68,10 @@ addresses.
 
 - FastAPI control plane with read-only repository reconnaissance, adaptive plan preview,
   plan-bound approval, cancellation, durable checkpoints and SSE.
+- Bounded runtime reconnaissance discovers same-origin routes and allowlisted OpenAPI contracts
+  before the user approves the plan.
+- Quick, targeted and full depth profiles use different route, request, sampling and duration
+  budgets; elapsed time comes from real work rather than artificial delays.
 - Filterable persisted findings plus integrity-checked artifact catalog and downloads.
 - Public GitHub repository and optional pull-request inspection using bounded REST `GET` requests.
 - Canonical repository validation and explicit private-repository server allowlist.
@@ -88,7 +94,8 @@ addresses.
 - Real axe-core WCAG A/AA scans with redacted JSON evidence and explicit manual coverage gaps.
 - Passive HTTPS/TLS, security-header, cookie and CORS inspection with redacted evidence.
 - Security execution limited to allowlisted routes, bounded `GET` requests and no exploitation.
-- Three isolated Chromium lab samples per performance route, with LCP, CLS, TTFB, load timing,
+- Two, three or five isolated Chromium lab samples per performance route according to mission
+  depth, with LCP, CLS, TTFB, load timing,
   transfer size, variance and execution context.
 - Performance execution is single-user and read-only: no load, stress, INP or regression claim
   without a baseline.
@@ -97,6 +104,9 @@ addresses.
 - Browser + performance correlation by the exact allowlisted runtime URL.
 - Repository + runtime evidence correlation without unsupported causal claims.
 - Next.js QA Director UI with real planning, execution status, event streaming and reports.
+- Specialist failures remain visible and produce `completed_with_warnings`; they no longer
+  suppress the final report.
+- Professional reports are downloadable as integrity-checked HTML and Markdown artifacts.
 - Evidence downloads routed through the authenticated server-side control-plane proxy.
 - Automatic Neon persistence when `DATABASE_URL` exists, with SQLite fallback for local work.
 - Startup validation for the Neon connection and required run tables.

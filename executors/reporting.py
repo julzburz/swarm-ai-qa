@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import html
+from pathlib import Path
+
 from orchestrator.ports import AgentExecutionContextV1
-from schemas.common import QualityDomain
+from schemas.common import EvidenceRefV1, QualityDomain
 from schemas.evidence import AgentOutputEnvelopeV1, CorrelatedFindingV1
 from schemas.execution import (
     CoverageSummaryV1,
@@ -27,6 +31,12 @@ from .models import (
 
 class EvidenceReportingExecutor:
     agent_id = "evidence_reporting_analyst"
+
+    def __init__(
+        self,
+        artifact_root: str | Path = ".data/artifacts",
+    ) -> None:
+        self.artifact_root = Path(artifact_root)
 
     async def execute(self, task: SpecialistTaskV1, context: AgentExecutionContextV1) -> AgentOutputEnvelopeV1:
         outputs = {
@@ -111,13 +121,27 @@ class EvidenceReportingExecutor:
             for objective in plan.coverage_objectives
             if objective.mandatory and objective.domain not in executed_domains
         ]
+        failure_domains = {
+            _AGENT_DOMAINS[failure.agent_id]: (
+                failure.error_message
+                or failure.error_class
+                or f"Task ended as {failure.status.value}."
+            )
+            for failure in context.dependency_failures.values()
+            if failure.agent_id in _AGENT_DOMAINS
+        }
         coverage = CoverageSummaryV1(
             plan_id=plan.plan_id,
             total_objectives=len(plan.coverage_objectives),
             completed_objectives=len(completed_objectives),
             mandatory_objectives_missed=missed_objectives,
             executed_domains=executed_domains,
-            evidence_completeness=1.0 if artifact_refs else 0.0,
+            unexecuted_domains=failure_domains,
+            evidence_completeness=(
+                len(completed_objectives) / len(plan.coverage_objectives)
+                if plan.coverage_objectives
+                else 0.0
+            ),
         )
 
         repository_evidence = []
@@ -394,6 +418,14 @@ class EvidenceReportingExecutor:
                 )
 
         residual_risks = list(plan.residual_risks)
+        limitations = [
+            (
+                f"{failure.agent_id}: {failure.status.value}. "
+                f"{failure.error_class or 'TaskError'}: "
+                f"{failure.error_message or 'No additional detail.'}"
+            )
+            for failure in context.dependency_failures.values()
+        ]
         summary_parts: list[str] = []
         if repository is not None:
             summary_parts.append(
@@ -483,6 +515,11 @@ class EvidenceReportingExecutor:
                 f"{automated_completed} caso(s) automatizados alcanzaron un "
                 f"resultado y {manual_required} requieren ejecución humana"
             )
+        if limitations:
+            summary_parts.append(
+                f"{len(limitations)} tarea(s) no completaron su cobertura y "
+                "se documentan como limitaciones, no como resultados aprobados"
+            )
         execution_summary = (
             "; ".join(summary_parts)
             + ". No repository commands were executed and no source files were modified."
@@ -492,19 +529,53 @@ class EvidenceReportingExecutor:
             for envelope in context.dependency_outputs.values()
         ]
 
+        failed_cases = sum(
+            result.status == "failed" for result in test_case_results
+        )
+        incomplete_cases = sum(
+            result.status
+            in {"blocked", "manual_required", "not_executed"}
+            for result in test_case_results
+        )
+        severe_findings = any(
+            finding.primary_finding.severity.value in {"critical", "high"}
+            for finding in correlated
+        )
+        if limitations:
+            verdict = "inconclusive"
+        elif severe_findings or failed_cases:
+            verdict = "not_recommended"
+        elif correlated or incomplete_cases:
+            verdict = "approved_with_observations"
+        else:
+            verdict = "approved"
+
         report = QaRunReportV1(
             run_id=context.run_id,
             mission_summary=context.mission.objective,
             execution_summary=execution_summary,
+            verdict=verdict,
             findings=correlated,
             coverage=coverage,
             test_case_results=test_case_results,
+            limitations=limitations,
             residual_risks=residual_risks,
             artifact_refs=artifact_refs,
+        )
+        report_refs = _write_professional_report(
+            self.artifact_root,
+            context.run_id,
+            task.task_id,
+            report,
+        )
+        artifact_refs = _unique_evidence([*artifact_refs, *report_refs])
+        report = report.model_copy(
+            update={"artifact_refs": artifact_refs}
         )
         output = EvidenceReportingOutputV1(
             report=report,
             source_output_schemas=source_schemas,
+            professional_report_formats=["text/markdown", "text/html"],
         )
         return AgentOutputEnvelopeV1(
             run_id=context.run_id,
@@ -516,8 +587,179 @@ class EvidenceReportingExecutor:
         )
 
 
+_AGENT_DOMAINS = {
+    "repository_analyst": QualityDomain.REPOSITORY,
+    "test_architect": QualityDomain.REPOSITORY,
+    "browser_automation_engineer": QualityDomain.FUNCTIONAL,
+    "api_test_engineer": QualityDomain.API,
+    "accessibility_specialist": QualityDomain.ACCESSIBILITY,
+    "security_test_engineer": QualityDomain.SECURITY,
+    "performance_test_engineer": QualityDomain.PERFORMANCE,
+}
+
+
 def _unique_evidence(values):
     return list({value.uri: value for value in values}.values())
+
+
+def _write_professional_report(
+    artifact_root: Path,
+    run_id,
+    task_id,
+    report: QaRunReportV1,
+) -> list[EvidenceRefV1]:
+    report_dir = artifact_root / str(run_id) / str(task_id) / "report"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    markdown_path = report_dir / "qa-director-report.md"
+    html_path = report_dir / "qa-director-report.html"
+    markdown_path.write_text(
+        _render_markdown_report(report),
+        encoding="utf-8",
+    )
+    html_path.write_text(
+        _render_html_report(report),
+        encoding="utf-8",
+    )
+    return [
+        _report_ref(markdown_path, run_id, task_id, "text/markdown"),
+        _report_ref(html_path, run_id, task_id, "text/html"),
+    ]
+
+
+def _report_ref(
+    path: Path,
+    run_id,
+    task_id,
+    media_type: str,
+) -> EvidenceRefV1:
+    raw = path.read_bytes()
+    return EvidenceRefV1(
+        uri=f"artifact://report/{run_id}/{task_id}/report/{path.name}",
+        media_type=media_type,
+        sha256=hashlib.sha256(raw).hexdigest(),
+        redacted=False,
+        description="Informe profesional consolidado de QA Director",
+    )
+
+
+def _render_markdown_report(report: QaRunReportV1) -> str:
+    counts = {
+        status: sum(
+            result.status == status
+            for result in report.test_case_results
+        )
+        for status in [
+            "passed",
+            "failed",
+            "blocked",
+            "observed",
+            "manual_required",
+            "not_executed",
+        ]
+    }
+    lines = [
+        "# Informe profesional — Swarm AI QA",
+        "",
+        f"**Ejecución:** `{report.run_id}`",
+        f"**Generado:** {report.generated_at.isoformat()}",
+        f"**Veredicto:** `{report.verdict}`",
+        "",
+        "## Resumen ejecutivo",
+        "",
+        report.mission_summary,
+        "",
+        report.execution_summary,
+        "",
+        "## Cobertura y resultados",
+        "",
+        (
+            "- Objetivos completados: "
+            f"{report.coverage.completed_objectives}/"
+            f"{report.coverage.total_objectives}"
+        ),
+        f"- Casos aprobados: {counts['passed']}",
+        f"- Casos fallidos: {counts['failed']}",
+        f"- Casos bloqueados: {counts['blocked']}",
+        f"- Casos observados: {counts['observed']}",
+        f"- Verificación manual requerida: {counts['manual_required']}",
+        f"- Casos no ejecutados: {counts['not_executed']}",
+        f"- Hallazgos: {len(report.findings)}",
+        "",
+        "## Hallazgos",
+        "",
+    ]
+    if report.findings:
+        for item in report.findings:
+            finding = item.primary_finding
+            lines.extend(
+                [
+                    (
+                        f"### [{finding.severity.value.upper()}] "
+                        f"{finding.title}"
+                    ),
+                    "",
+                    finding.observation,
+                    "",
+                    f"**Impacto:** {finding.impact}",
+                    "",
+                    f"**Recomendación:** {finding.recommendation}",
+                    "",
+                ]
+            )
+    else:
+        lines.extend(
+            [
+                (
+                    "No se observaron hallazgos en la cobertura ejecutada. "
+                    "Esto no equivale a ausencia total de defectos."
+                ),
+                "",
+            ]
+        )
+    lines.extend(["## Resultados de casos", ""])
+    for result in report.test_case_results:
+        lines.append(
+            f"- `{result.case_id}` — **{result.status}**: "
+            f"{result.observation}"
+        )
+    if not report.test_case_results:
+        lines.append("- No hubo casos ejecutables disponibles.")
+    lines.extend(["", "## Limitaciones", ""])
+    lines.extend(
+        [f"- {value}" for value in report.limitations]
+        or ["- No se registraron fallos de infraestructura."]
+    )
+    lines.extend(["", "## Riesgos residuales", ""])
+    lines.extend(
+        [f"- {value}" for value in report.residual_risks]
+        or ["- No se registraron riesgos residuales adicionales."]
+    )
+    lines.extend(
+        [
+            "",
+            "---",
+            (
+                "Límite permanente: los agentes examinaron y reportaron; "
+                "no modificaron el código del proyecto evaluado."
+            ),
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _render_html_report(report: QaRunReportV1) -> str:
+    escaped = html.escape(_render_markdown_report(report))
+    return (
+        "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>Informe Swarm AI QA</title><style>"
+        "body{font:15px/1.6 system-ui,sans-serif;max-width:980px;margin:40px "
+        "auto;padding:0 24px;color:#142019;background:#f7f7f2}"
+        "pre{white-space:pre-wrap;font:inherit;background:#fff;border:1px solid "
+        "#ccd2c8;padding:28px}</style></head><body>"
+        f"<pre>{escaped}</pre></body></html>"
+    )
 
 
 def _test_case_results(

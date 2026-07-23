@@ -8,7 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from orchestrator.ports import AgentExecutionContextV1
-from schemas.common import EvidenceRefV1, QualityDomain, Severity, ToolExecutionStatus
+from schemas.common import (
+    EvidenceRefV1,
+    MissionMode,
+    QualityDomain,
+    Severity,
+    ToolExecutionStatus,
+)
 from schemas.evidence import AgentOutputEnvelopeV1, FindingV1, ToolExecutionResultV1
 from schemas.execution import SpecialistTaskV1
 from schemas.specialists import (
@@ -82,7 +88,11 @@ class PerformanceExecutor:
                 f"{sorted(unauthorized_paths)}"
             )
 
-        repetitions = 3
+        repetitions = {
+            MissionMode.QUICK_TASK: 2,
+            MissionMode.TARGETED_EXAMINATION: 3,
+            MissionMode.FULL_EXAMINATION: 5,
+        }[context.mission.mode]
         started_at = datetime.now(timezone.utc)
         started_clock = time.monotonic()
         result = await self.worker.run(
@@ -94,7 +104,7 @@ class PerformanceExecutor:
                 blocked_paths=target.blocked_paths,
                 repetitions=repetitions,
                 max_requests=min(
-                    100,
+                    max(20, task.estimated_requests),
                     context.mission.budget.max_requests,
                 ),
                 timeout_seconds=min(

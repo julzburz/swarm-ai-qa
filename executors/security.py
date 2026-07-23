@@ -77,7 +77,7 @@ class SecurityExecutor:
                 allowed_paths=planned_paths,
                 blocked_paths=target.blocked_paths,
                 max_requests=min(
-                    25,
+                    max(5, task.estimated_requests),
                     context.mission.budget.max_requests,
                 ),
                 timeout_seconds=min(

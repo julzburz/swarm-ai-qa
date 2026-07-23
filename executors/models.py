@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -25,3 +26,17 @@ class TestArchitectureOutputV1(StrictModel):
 class EvidenceReportingOutputV1(StrictModel):
     report: QaRunReportV1
     source_output_schemas: list[str] = Field(min_length=1)
+    professional_report_formats: list[str] = Field(default_factory=list)
+
+
+class ReleaseRecommendationOutputV1(StrictModel):
+    decision: Literal["ready", "conditional", "blocked"]
+    score: float = Field(ge=0, le=100)
+    summary: str
+    source_report_verdict: Literal[
+        "approved",
+        "approved_with_observations",
+        "not_recommended",
+        "inconclusive",
+    ]
+    blocking_reasons: list[str] = Field(default_factory=list)

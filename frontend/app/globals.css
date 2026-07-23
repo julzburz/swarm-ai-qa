@@ -444,9 +444,13 @@ button {
 
 .depthGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+
+.depthGrid .depth:nth-child(1) { order: 3; }
+.depthGrid .depth:nth-child(2) { order: 1; }
+.depthGrid .depth:nth-child(3) { order: 2; }
 
 .depth {
   display: flex;
@@ -482,6 +486,21 @@ button {
 
 .depth.selected > span {
   color: var(--signal-dark);
+}
+
+.taskError {
+  display: block;
+  margin-top: 6px;
+  color: #b42318;
+  font: 600 10px/1.4 var(--font-geist-mono), monospace;
+}
+
+.liveStats {
+  margin-bottom: 12px;
+}
+
+.executiveReport {
+  border-left: 5px solid var(--signal);
 }
 
 .domainRow {

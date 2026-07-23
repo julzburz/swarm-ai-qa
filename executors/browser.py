@@ -9,6 +9,7 @@ from orchestrator.ports import AgentExecutionContextV1
 from schemas.common import (
     Environment,
     EvidenceRefV1,
+    MissionMode,
     QualityDomain,
     Severity,
     ToolExecutionStatus,
@@ -88,7 +89,22 @@ class BrowserAutomationExecutor:
                 ),
                 allow_get_form_submission=safe_interactions,
                 max_interactions_per_path=3 if safe_interactions else 0,
-                max_requests=min(100, context.mission.budget.max_requests),
+                viewport_profiles={
+                    MissionMode.QUICK_TASK: ["desktop"],
+                    MissionMode.TARGETED_EXAMINATION: [
+                        "desktop",
+                        "mobile",
+                    ],
+                    MissionMode.FULL_EXAMINATION: [
+                        "desktop",
+                        "tablet",
+                        "mobile",
+                    ],
+                }[context.mission.mode],
+                max_requests=min(
+                    max(20, task.estimated_requests),
+                    context.mission.budget.max_requests,
+                ),
                 timeout_seconds=min(task.timeout_seconds, context.mission.budget.max_duration_seconds),
             )
         )

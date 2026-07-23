@@ -167,7 +167,14 @@ def _critical_journeys(
         for candidate in candidates
         if any(_path_matches(candidate, allowed) for allowed in target.allowed_paths)
     ]
-    return list(dict.fromkeys([*prioritized, *target.allowed_paths]))
+    browser_paths = [
+        path
+        for path in target.allowed_paths
+        if not _is_api_contract_path(path)
+    ]
+    return list(
+        dict.fromkeys([*prioritized, *(browser_paths or ["/"])])
+    )
 
 
 def _path_matches(path: str, allowed: str) -> bool:
@@ -254,7 +261,8 @@ def _design_test_cases(
     for index, path in enumerate(runtime.allowed_paths, start=1):
         url = base_url + (path if path.startswith("/") else f"/{path}")
         suffix = f"{index:03d}"
-        if QualityDomain.FUNCTIONAL in domains:
+        page_path = not _is_api_contract_path(path)
+        if QualityDomain.FUNCTIONAL in domains and page_path:
             cases.extend(
                 [
                     TestCaseDesignV1(
@@ -361,7 +369,7 @@ def _design_test_cases(
                         target_reference=url,
                     )
                 )
-        if QualityDomain.ACCESSIBILITY in domains:
+        if QualityDomain.ACCESSIBILITY in domains and page_path:
             cases.extend(
                 [
                     TestCaseDesignV1(
@@ -426,7 +434,7 @@ def _design_test_cases(
                     ),
                 ]
             )
-        if QualityDomain.SECURITY in domains:
+        if QualityDomain.SECURITY in domains and page_path:
             cases.extend(
                 [
                     TestCaseDesignV1(
@@ -490,7 +498,7 @@ def _design_test_cases(
                     ),
                 ]
             )
-        if QualityDomain.PERFORMANCE in domains:
+        if QualityDomain.PERFORMANCE in domains and page_path:
             cases.extend(
                 [
                     TestCaseDesignV1(
@@ -606,6 +614,14 @@ def _gherkin(
         f"    Dado {given}\n"
         f"    Cuando {when}\n"
         f"    Entonces {then}"
+    )
+
+
+def _is_api_contract_path(path: str) -> bool:
+    normalized = path.lower().split("?", 1)[0].rstrip("/")
+    return (
+        normalized.endswith((".json", ".yaml", ".yml"))
+        or normalized.endswith(("/docs", "/redoc"))
     )
 
 

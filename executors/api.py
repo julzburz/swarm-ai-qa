@@ -8,6 +8,7 @@ from pathlib import Path
 from orchestrator.ports import AgentExecutionContextV1
 from schemas.common import (
     EvidenceRefV1,
+    MissionMode,
     QualityDomain,
     Severity,
     ToolExecutionStatus,
@@ -70,10 +71,14 @@ class ApiTestExecutor:
                 allowed_paths=target.allowed_paths,
                 blocked_paths=target.blocked_paths,
                 max_requests=min(
-                    20,
+                    max(10, task.estimated_requests),
                     context.mission.budget.max_requests,
                 ),
-                max_operations=20,
+                max_operations={
+                    MissionMode.QUICK_TASK: 5,
+                    MissionMode.TARGETED_EXAMINATION: 20,
+                    MissionMode.FULL_EXAMINATION: 50,
+                }[context.mission.mode],
                 timeout_seconds=min(
                     task.timeout_seconds,
                     context.mission.budget.max_duration_seconds,

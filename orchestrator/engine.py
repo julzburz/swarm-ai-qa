@@ -18,7 +18,7 @@ from .models import (
     RunStatus,
     TaskExecutionRecordV1,
 )
-from .ports import AgentExecutionContextV1
+from .ports import AgentExecutionContextV1, DependencyFailureV1
 from .registry import AgentRegistry
 from .store import RunStore
 
@@ -113,8 +113,18 @@ class SwarmOrchestrator:
                     runnable = self._runnable_tasks(state, plan.tasks)
                     for task in runnable[:capacity]:
                         dependency_outputs = self._dependency_outputs(state, task)
+                        dependency_failures = self._dependency_failures(
+                            state,
+                            task,
+                        )
                         active_task = asyncio.create_task(
-                            self._run_task(state.run_id, mission, task, dependency_outputs),
+                            self._run_task(
+                                state.run_id,
+                                mission,
+                                task,
+                                dependency_outputs,
+                                dependency_failures,
+                            ),
                             name=f"{state.run_id}:{task.task_id}:{task.agent_id}",
                         )
                         active[active_task] = task
@@ -170,16 +180,48 @@ class SwarmOrchestrator:
                 for record in state.task_records.values()
             )
             if failed_or_skipped:
-                state = self._with_status(
-                    state,
-                    RunStatus.FAILED,
-                    error="One or more agent tasks failed or were skipped.",
+                reporting_record = next(
+                    (
+                        record
+                        for record in state.task_records.values()
+                        if record.agent_id == "evidence_reporting_analyst"
+                    ),
+                    None,
                 )
-                await self._publish(
-                    state,
-                    RunEventType.RUN_FAILED,
-                    "Run terminado con tareas fallidas o no ejecutadas.",
-                )
+                if (
+                    reporting_record is not None
+                    and reporting_record.status == TaskStatus.COMPLETED
+                ):
+                    state = self._with_status(
+                        state,
+                        RunStatus.COMPLETED_WITH_WARNINGS,
+                        error=(
+                            "La evaluación terminó con cobertura parcial; "
+                            "consulta el informe para ver las limitaciones."
+                        ),
+                    )
+                    await self._publish(
+                        state,
+                        RunEventType.RUN_COMPLETED_WITH_WARNINGS,
+                        (
+                            "Evaluación completada con advertencias y reporte "
+                            "profesional disponible."
+                        ),
+                    )
+                else:
+                    state = self._with_status(
+                        state,
+                        RunStatus.FAILED,
+                        error=(
+                            "One or more agent tasks failed and the final "
+                            "report could not be completed."
+                        ),
+                    )
+                    await self._publish(
+                        state,
+                        RunEventType.RUN_FAILED,
+                        "Run terminado sin poder completar el reporte final.",
+                    )
             else:
                 state = self._with_status(state, RunStatus.COMPLETED)
                 await self._publish(
@@ -199,7 +241,12 @@ class SwarmOrchestrator:
         state = self.store.get_run(run_id)
         if state is None:
             raise LookupError(f"Run not found: {run_id}")
-        if state.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
+        if state.status in {
+            RunStatus.COMPLETED,
+            RunStatus.COMPLETED_WITH_WARNINGS,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+        }:
             return state
         state = state.model_copy(
             update={
@@ -264,6 +311,7 @@ class SwarmOrchestrator:
         mission: UserMissionRequestV1,
         task: SpecialistTaskV1,
         dependency_outputs: dict[str, AgentOutputEnvelopeV1],
+        dependency_failures: dict[str, DependencyFailureV1],
     ) -> _TaskOutcome:
         executor = self.registry.get(task.agent_id)
         for attempt in range(1, self.max_retries + 2):
@@ -287,6 +335,7 @@ class SwarmOrchestrator:
                 mission=mission,
                 attempt=attempt,
                 dependency_outputs=dependency_outputs,
+                dependency_failures=dependency_failures,
             )
             try:
                 output = await asyncio.wait_for(
@@ -388,9 +437,12 @@ class SwarmOrchestrator:
                 if record.status != TaskStatus.PENDING:
                     continue
                 dependency_records = [state.task_records[str(item)] for item in task.depends_on]
-                if any(
+                if (
+                    task.dependency_policy == "all_successful"
+                    and any(
                     dependency.status in {TaskStatus.FAILED, TaskStatus.SKIPPED, TaskStatus.CANCELLED}
                     for dependency in dependency_records
+                    )
                 ):
                     skipped = record.model_copy(
                         update={
@@ -421,7 +473,23 @@ class SwarmOrchestrator:
             if record.status != TaskStatus.PENDING:
                 continue
             dependencies = [state.task_records[str(item)] for item in task.depends_on]
-            if all(item.status == TaskStatus.COMPLETED for item in dependencies):
+            if task.dependency_policy == "all_terminal":
+                ready = all(
+                    item.status
+                    in {
+                        TaskStatus.COMPLETED,
+                        TaskStatus.FAILED,
+                        TaskStatus.SKIPPED,
+                        TaskStatus.CANCELLED,
+                    }
+                    for item in dependencies
+                )
+            else:
+                ready = all(
+                    item.status == TaskStatus.COMPLETED
+                    for item in dependencies
+                )
+            if ready:
                 runnable.append(task)
         return runnable
 
@@ -434,6 +502,29 @@ class SwarmOrchestrator:
             str(dependency_id): output
             for dependency_id in task.depends_on
             if (output := state.task_records[str(dependency_id)].output) is not None
+        }
+
+    def _dependency_failures(
+        self,
+        state: RunStateV1,
+        task: SpecialistTaskV1,
+    ) -> dict[str, DependencyFailureV1]:
+        return {
+            str(dependency_id): DependencyFailureV1(
+                agent_id=record.agent_id,
+                status=record.status,
+                error_class=record.error_class,
+                error_message=record.error_message,
+            )
+            for dependency_id in task.depends_on
+            if (
+                record := state.task_records[str(dependency_id)]
+            ).status
+            in {
+                TaskStatus.FAILED,
+                TaskStatus.SKIPPED,
+                TaskStatus.CANCELLED,
+            }
         }
 
     async def _cancel_active_and_pending(

@@ -7,10 +7,18 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from executors.models import RepositoryAnalysisOutputV1
+from executors.api import ApiTestExecutor
+from executors.browser import BrowserAutomationExecutor
 from executors.repository import RepositoryAnalystExecutor
 from orchestrator import AgentRegistry, RuleBasedQaDirector, SwarmOrchestrator
 from orchestrator.models import RunStateV1
 from schemas.mission import SwarmExecutionPlanV1, UserMissionRequestV1
+from schemas.common import MissionMode, QualityDomain
+from workers.api import SafeHttpApiWorker
+from workers.browser import PlaywrightBrowserWorker
+
+from .runtime_reconnaissance import inspect_runtime
+from .schemas import RuntimeReconnaissanceV1
 
 
 class MissingExecutorsError(RuntimeError):
@@ -25,10 +33,14 @@ class PlanPreviewExpiredError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class AdaptivePlanPreview:
+    mission: UserMissionRequestV1
     plan: SwarmExecutionPlanV1
     reconnaissance: RepositoryAnalysisOutputV1 | None
+    runtime_reconnaissance: RuntimeReconnaissanceV1 | None
     planning_basis: Literal[
         "repository_reconnaissance",
+        "runtime_reconnaissance",
+        "combined_reconnaissance",
         "runtime_inputs",
         "mission_inputs",
     ]
@@ -61,8 +73,11 @@ class RunController:
 
     async def preview(self, mission: UserMissionRequestV1) -> AdaptivePlanPreview:
         reconnaissance: RepositoryAnalysisOutputV1 | None = None
+        runtime_reconnaissance: RuntimeReconnaissanceV1 | None = None
         basis: Literal[
             "repository_reconnaissance",
+            "runtime_reconnaissance",
+            "combined_reconnaissance",
             "runtime_inputs",
             "mission_inputs",
         ] = "runtime_inputs" if mission.runtime_target is not None else "mission_inputs"
@@ -79,6 +94,66 @@ class RunController:
                 )
                 basis = "repository_reconnaissance"
 
+        requested_domains = set(mission.selected_domains)
+        for job in mission.requested_jobs:
+            requested_domains.update(job.domains)
+        browser_executor = (
+            self.registry.get("browser_automation_engineer")
+            if self.registry.contains("browser_automation_engineer")
+            else None
+        )
+        api_executor = (
+            self.registry.get("api_test_engineer")
+            if self.registry.contains("api_test_engineer")
+            else None
+        )
+        runtime_reconnaissance_available = (
+            mission.runtime_target is not None
+            and (
+                (
+                    (
+                        QualityDomain.FUNCTIONAL in requested_domains
+                        or mission.mode == MissionMode.FULL_EXAMINATION
+                    )
+                    and isinstance(
+                        browser_executor,
+                        BrowserAutomationExecutor,
+                    )
+                    and isinstance(
+                        browser_executor.worker,
+                        PlaywrightBrowserWorker,
+                    )
+                )
+                or (
+                    QualityDomain.API in requested_domains
+                    and isinstance(api_executor, ApiTestExecutor)
+                    and isinstance(api_executor.worker, SafeHttpApiWorker)
+                )
+            )
+        )
+        if runtime_reconnaissance_available and mission.runtime_target is not None:
+            runtime_reconnaissance = await inspect_runtime(
+                mission.runtime_target,
+                mission.mode,
+            )
+            if runtime_reconnaissance.planned_paths:
+                mission = mission.model_copy(
+                    update={
+                        "runtime_target": mission.runtime_target.model_copy(
+                            update={
+                                "allowed_paths": (
+                                    runtime_reconnaissance.planned_paths
+                                )
+                            }
+                        )
+                    }
+                )
+            basis = (
+                "combined_reconnaissance"
+                if reconnaissance is not None
+                else "runtime_reconnaissance"
+            )
+
         plan = self.director.build_plan(
             mission,
             project_profile=(
@@ -93,8 +168,10 @@ class RunController:
             ),
         )
         preview = AdaptivePlanPreview(
+            mission=mission,
             plan=plan,
             reconnaissance=reconnaissance,
+            runtime_reconnaissance=runtime_reconnaissance,
             planning_basis=basis,
         )
         self._previews[mission.mission_id] = (

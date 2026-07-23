@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import AnyHttpUrl, Field
 
 from executors.models import RepositoryAnalysisOutputV1
 from schemas.common import QualityDomain, Severity, StrictModel
@@ -21,12 +21,26 @@ class HealthResponseV1(StrictModel):
     authentication: Literal["disabled", "bearer"]
 
 
+class RuntimeReconnaissanceV1(StrictModel):
+    base_url: AnyHttpUrl
+    reachable: bool
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    content_type: str | None = None
+    discovered_paths: list[str] = Field(default_factory=list)
+    planned_paths: list[str] = Field(default_factory=list)
+    openapi_path: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class PlanPreviewResponseV1(StrictModel):
     mission: UserMissionRequestV1
     plan: SwarmExecutionPlanV1
     reconnaissance: RepositoryAnalysisOutputV1 | None = None
+    runtime_reconnaissance: RuntimeReconnaissanceV1 | None = None
     planning_basis: Literal[
         "repository_reconnaissance",
+        "runtime_reconnaissance",
+        "combined_reconnaissance",
         "runtime_inputs",
         "mission_inputs",
     ] = "mission_inputs"

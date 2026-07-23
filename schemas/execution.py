@@ -42,6 +42,9 @@ class SpecialistTaskV1(StrictModel):
     capability_ids: list[NonEmptyStr] = Field(min_length=1)
     risk_refs: list[NonEmptyStr] = Field(min_length=1)
     depends_on: list[UUID] = Field(default_factory=list)
+    dependency_policy: Literal["all_successful", "all_terminal"] = (
+        "all_successful"
+    )
     timeout_seconds: int = Field(gt=0, le=86_400, default=600)
     estimated_requests: int = Field(ge=0, default=0)
     status: TaskStatus = TaskStatus.PENDING

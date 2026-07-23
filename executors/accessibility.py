@@ -91,7 +91,10 @@ class AccessibilityExecutor:
                 base_url=target.base_url,
                 allowed_paths=planned_paths,
                 blocked_paths=target.blocked_paths,
-                max_requests=min(100, context.mission.budget.max_requests),
+                max_requests=min(
+                    max(20, task.estimated_requests),
+                    context.mission.budget.max_requests,
+                ),
                 timeout_seconds=min(
                     task.timeout_seconds,
                     context.mission.budget.max_duration_seconds,

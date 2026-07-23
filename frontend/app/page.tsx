@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type SourceMode = "repository" | "runtime" | "combined";
-type DepthMode = "quick" | "examination";
+type DepthMode = "quick" | "examination" | "full";
 type Domain =
   | "repository"
   | "functional"
@@ -78,8 +78,20 @@ type PlanPreview = {
     production_restrictions: string[];
   };
   reconnaissance: RepositoryReconnaissance | null;
+  runtime_reconnaissance: {
+    base_url: string;
+    reachable: boolean;
+    status_code?: number;
+    content_type?: string;
+    discovered_paths: string[];
+    planned_paths: string[];
+    openapi_path?: string;
+    notes: string[];
+  } | null;
   planning_basis:
     | "repository_reconnaissance"
+    | "runtime_reconnaissance"
+    | "combined_reconnaissance"
     | "runtime_inputs"
     | "mission_inputs";
   missing_executors: string[];
@@ -97,6 +109,11 @@ type RunEvent = {
 type TaskRecord = {
   agent_id: string;
   status: string;
+  attempts: number;
+  started_at?: string;
+  completed_at?: string;
+  error_class?: string;
+  error_message?: string;
   output?: {
     output_schema: string;
     output: Record<string, unknown>;
@@ -169,13 +186,19 @@ type TestCaseResult = {
 };
 
 const API = "/control-plane";
-const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+const TERMINAL = new Set([
+  "completed",
+  "completed_with_warnings",
+  "failed",
+  "cancelled",
+]);
 const EVENT_TYPES = [
   "run.created",
   "run.planned",
   "run.started",
   "run.cancellation_requested",
   "run.completed",
+  "run.completed_with_warnings",
   "run.failed",
   "run.cancelled",
   "agent.started",
@@ -194,6 +217,7 @@ const AGENT_NAMES: Record<string, string> = {
   accessibility_specialist: "Accessibility Specialist",
   security_test_engineer: "Security Test Engineer",
   performance_test_engineer: "Performance Engineer",
+  release_manager: "Release Manager",
 };
 
 function parseGitHubUrl(value: string) {
@@ -295,7 +319,33 @@ export default function QaDirectorPage() {
 
     const mission: Record<string, unknown> = {
       objective: objective.trim(),
-      mode: depth === "quick" ? "quick_task" : "targeted_examination",
+      mode:
+        depth === "quick"
+          ? "quick_task"
+          : depth === "full"
+            ? "full_examination"
+            : "targeted_examination",
+      budget:
+        depth === "quick"
+          ? {
+              max_duration_seconds: 300,
+              max_requests: 100,
+              max_llm_tokens: 30000,
+              max_parallel_tasks: 2,
+            }
+          : depth === "full"
+            ? {
+                max_duration_seconds: 2700,
+                max_requests: 1500,
+                max_llm_tokens: 250000,
+                max_parallel_tasks: 4,
+              }
+            : {
+                max_duration_seconds: 1200,
+                max_requests: 600,
+                max_llm_tokens: 120000,
+                max_parallel_tasks: 4,
+              },
     };
     if (hasRepository) {
       mission.repository_target = parseGitHubUrl(repositoryUrl);
@@ -346,6 +396,9 @@ export default function QaDirectorPage() {
       }));
     } else {
       mission.selected_domains = selectedDomains;
+      if (depth === "full") {
+        mission.request_release_decision = true;
+      }
     }
     return mission;
   }
@@ -390,7 +443,12 @@ export default function QaDirectorPage() {
     setRun(state);
     if (TERMINAL.has(state.status)) {
       streamRef.current?.close();
-      setPhase(state.status === "completed" ? "report" : "running");
+      setPhase(
+        state.status === "completed" ||
+          state.status === "completed_with_warnings"
+          ? "report"
+          : "running",
+      );
       void loadHistory();
       void loadArtifacts(state.run_id);
     }
@@ -440,6 +498,7 @@ export default function QaDirectorPage() {
         mission: state.mission,
         plan: state.plan,
         reconnaissance: null,
+        runtime_reconnaissance: null,
         planning_basis: "mission_inputs",
         missing_executors: [],
         executable: true,
@@ -447,7 +506,12 @@ export default function QaDirectorPage() {
       setEvents(await eventsResponse.json());
       const artifactPayload = await artifactsResponse.json();
       setArtifacts(artifactPayload.items ?? []);
-      setPhase(state.status === "completed" ? "report" : "running");
+      setPhase(
+        state.status === "completed" ||
+          state.status === "completed_with_warnings"
+          ? "report"
+          : "running",
+      );
       if (!TERMINAL.has(state.status)) {
         openEventStream(
           state.run_id,
@@ -536,6 +600,7 @@ export default function QaDirectorPage() {
   }, [run]);
 
   const reconnaissance = preview?.reconnaissance ?? null;
+  const runtimeReconnaissance = preview?.runtime_reconnaissance ?? null;
   const discoveredTechnologies = Array.from(
     new Set(
       (reconnaissance?.project_profile.components ?? []).flatMap(
@@ -617,6 +682,11 @@ export default function QaDirectorPage() {
     | {
         report?: {
           execution_summary: string;
+          verdict:
+            | "approved"
+            | "approved_with_observations"
+            | "not_recommended"
+            | "inconclusive";
           findings: Array<{
             primary_finding: {
               finding_id: string;
@@ -628,6 +698,12 @@ export default function QaDirectorPage() {
             correlation_reason: string;
           }>;
           residual_risks: string[];
+          limitations: string[];
+          coverage: {
+            total_objectives: number;
+            completed_objectives: number;
+            evidence_completeness: number;
+          };
           test_case_results: TestCaseResult[];
         };
       }
@@ -684,6 +760,13 @@ export default function QaDirectorPage() {
       }
     | undefined;
   const testCases = testDesignOutput?.test_plan?.test_cases ?? [];
+  const runRecords = Object.values(run?.task_records ?? {});
+  const completedAgents = runRecords.filter(
+    (record) => record.status === "completed",
+  ).length;
+  const failedAgents = runRecords.filter(
+    (record) => record.status === "failed",
+  ).length;
   const testCaseResults = new Map(
     (reportOutput?.report?.test_case_results ?? []).map((result) => [
       result.case_id,
@@ -904,6 +987,17 @@ export default function QaDirectorPage() {
               <div className="choiceSection">
                 <span className="label">PROFUNDIDAD</span>
                 <div className="depthGrid">
+                  <button
+                    type="button"
+                    className={depth === "full" ? "depth selected" : "depth"}
+                    onClick={() => setDepth("full")}
+                  >
+                    <span>FULL</span>
+                    <div>
+                      <strong>Examinación completa</strong>
+                      <small>Hasta 10 rutas, mayor muestreo y veredicto</small>
+                    </div>
+                  </button>
                   <button
                     type="button"
                     className={depth === "quick" ? "depth selected" : "depth"}
@@ -1130,7 +1224,38 @@ export default function QaDirectorPage() {
                   )}
                 </section>
               )}
-              {!reconnaissance && (
+              {runtimeReconnaissance && (
+                <section className="reconResult">
+                  <div className="reconHeader">
+                    <div>
+                      <span>RUNTIME RECONNAISSANCE</span>
+                      <strong>
+                        {runtimeReconnaissance.reachable
+                          ? `HTTP ${runtimeReconnaissance.status_code ?? "OK"}`
+                          : "Destino no confirmado"}
+                      </strong>
+                    </div>
+                    <div>
+                      <small>RUTAS PLANIFICADAS</small>
+                      <strong>{runtimeReconnaissance.planned_paths.length}</strong>
+                    </div>
+                  </div>
+                  <div className="technologyRow">
+                    {runtimeReconnaissance.planned_paths.map((path) => (
+                      <span key={path}>{path}</span>
+                    ))}
+                    {runtimeReconnaissance.openapi_path && (
+                      <span>OpenAPI: {runtimeReconnaissance.openapi_path}</span>
+                    )}
+                  </div>
+                  {!!runtimeReconnaissance.notes.length && (
+                    <p className="reconUnknowns">
+                      {runtimeReconnaissance.notes.join(" · ")}
+                    </p>
+                  )}
+                </section>
+              )}
+              {!reconnaissance && !runtimeReconnaissance && (
                 <div className="runtimeBasis">
                   Plan construido desde las rutas, áreas y restricciones autorizadas.
                   No se proporcionó un repositorio para detectar el stack.
@@ -1204,6 +1329,25 @@ export default function QaDirectorPage() {
                 <span className={`runStatus ${run.status}`}>{run.status}</span>
               </div>
 
+              <div className="testMatrixStats liveStats">
+                <span>
+                  <strong>{completedAgents}/{runRecords.length}</strong>
+                  agentes completados
+                </span>
+                <span>
+                  <strong>{failedAgents}</strong>
+                  fallos visibles
+                </span>
+                <span>
+                  <strong>{events.length}</strong>
+                  eventos verificables
+                </span>
+                <span>
+                  <strong>{artifacts.length}</strong>
+                  evidencias registradas
+                </span>
+              </div>
+
               <div className="liveGrid">
                 <div className="agentStack">
                   {preview?.plan.tasks.map((task, index) => {
@@ -1215,6 +1359,26 @@ export default function QaDirectorPage() {
                         <div>
                           <strong>{agentName(task.agent_id)}</strong>
                           <p>{task.objective}</p>
+                          {record?.started_at && (
+                            <small className="agentObjective">
+                              intento {record.attempts || 1}
+                              {record.completed_at
+                                ? ` · ${Math.max(
+                                    0,
+                                    Math.round(
+                                      (new Date(record.completed_at).getTime() -
+                                        new Date(record.started_at).getTime()) /
+                                        1000,
+                                    ),
+                                  )} s`
+                                : " · trabajando ahora"}
+                            </small>
+                          )}
+                          {record?.error_message && (
+                            <small className="taskError">
+                              {record.error_class}: {record.error_message}
+                            </small>
+                          )}
                         </div>
                         <span className={`status ${record?.status ?? "pending"}`}>
                           {record?.status ?? "pending"}
@@ -1243,6 +1407,53 @@ export default function QaDirectorPage() {
 
               {phase === "report" && (
                 <div className="reportArea">
+                  {reportOutput?.report && (
+                    <section className="reportBlock executiveReport">
+                      <div className="blockTitle">
+                        <span>QA DIRECTOR / VEREDICTO</span>
+                        <strong>
+                          {reportOutput.report.verdict
+                            .replaceAll("_", " ")
+                            .toUpperCase()}
+                        </strong>
+                      </div>
+                      <div className="testMatrixStats">
+                        <span>
+                          <strong>
+                            {reportOutput.report.coverage.completed_objectives}/
+                            {reportOutput.report.coverage.total_objectives}
+                          </strong>
+                          objetivos cubiertos
+                        </span>
+                        <span>
+                          <strong>
+                            {Math.round(
+                              reportOutput.report.coverage
+                                .evidence_completeness * 100,
+                            )}
+                            %
+                          </strong>
+                          cobertura evidenciada
+                        </span>
+                        <span>
+                          <strong>{testCases.length}</strong>
+                          casos trazados
+                        </span>
+                        <span>
+                          <strong>{reportOutput.report.limitations.length}</strong>
+                          limitaciones
+                        </span>
+                      </div>
+                      {!!reportOutput.report.limitations.length && (
+                        <div className="restrictionBox">
+                          <strong>COBERTURA INCOMPLETA</strong>
+                          {reportOutput.report.limitations.map((limitation) => (
+                            <p key={limitation}>— {limitation}</p>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  )}
                   {browserOutput?.interaction_coverage && (
                     <section className="reportBlock">
                       <div className="blockTitle">

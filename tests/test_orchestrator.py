@@ -177,7 +177,7 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
             any(event.event_type == RunEventType.AGENT_RETRYING for event in events)
         )
 
-    async def test_failed_dependency_skips_downstream_agents(self) -> None:
+    async def test_failed_dependency_still_produces_partial_report(self) -> None:
         mission = repository_mission()
         plan = RuleBasedQaDirector().build_plan(mission)
         tracker = ExecutionTracker()
@@ -196,7 +196,10 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
 
         state = await orchestrator.execute(mission, plan)
 
-        self.assertEqual(state.status, RunStatus.FAILED)
+        self.assertEqual(
+            state.status,
+            RunStatus.COMPLETED_WITH_WARNINGS,
+        )
         self.assertEqual(
             next(
                 record
@@ -212,6 +215,14 @@ class OrchestratorTests(unittest.IsolatedAsyncioTestCase):
                 if record.agent_id == "test_architect"
             ).status,
             TaskStatus.SKIPPED,
+        )
+        self.assertEqual(
+            next(
+                record
+                for record in state.task_records.values()
+                if record.agent_id == "evidence_reporting_analyst"
+            ).status,
+            TaskStatus.COMPLETED,
         )
 
     async def test_events_and_final_state_survive_store_reopen(self) -> None:
