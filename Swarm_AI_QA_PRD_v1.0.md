@@ -107,7 +107,9 @@ Un sistema multiagente puede separar contextos, ejecutar herramientas especializ
 
 - No ejecutar pruebas destructivas sobre producción sin autorización explícita y límites estrictos.
 
-- No generar, editar, aplicar ni proponer código, tests, fixes, patches, commits, branches o pull requests.
+- No generar, editar, aplicar ni proponer código fuente o código de prueba ejecutable, fixes,
+  patches, commits, branches o pull requests. Las matrices, casos y escenarios Gherkin son
+  documentación QA y nunca se escriben como archivos dentro del repositorio evaluado.
 
 - No actuar como agente de desarrollo. Swarm observa, prueba, intenta romper dentro del alcance autorizado y reporta resultados; nunca reescribe el producto evaluado.
 
@@ -153,6 +155,8 @@ Un sistema multiagente puede separar contextos, ejecutar herramientas especializ
 - Introducir una URL desplegada y descubrir flujos básicos mediante Playwright.
 
 - Ejecutar auditorías funcionales, seguridad web básica, rendimiento y accesibilidad.
+
+- Diseñar una matriz de casos trazable con riesgo, pasos, resultado esperado y BDD/Gherkin.
 
 - Mostrar actividad de agentes en tiempo real.
 
@@ -287,7 +291,10 @@ La constitución es obligatoria para todos los agentes, prompts, workers y herra
 
 23. La personalidad visual nunca puede reducir profesionalismo ni ocultar riesgo.
 
-24. Ningún agente puede generar, editar, aplicar o proponer cambios de código, tests, configuración, commits, branches o pull requests.
+24. Ningún agente puede generar, editar, aplicar o proponer cambios de código fuente,
+    código de prueba ejecutable, configuración, commits, branches o pull requests. Test
+    Architect puede diseñar casos y Gherkin como evidencia documental, no como archivos
+    ejecutables del proyecto.
 
 25. Los repositorios son fuentes de lectura. Los workers pueden crear archivos técnicos efímeros internos para operar herramientas, pero esos archivos no se presentan como código entregable ni se escriben en el repositorio del usuario.
 
@@ -597,7 +604,8 @@ Puede reutilizar resultados solo cuando coincidan commit SHA, tool version, conf
 
 40. Report Analyst publica dashboard y GitHub Check.
 
-41. Swarm publica o exporta exclusivamente el reporte y sus evidencias; nunca crea branches, commits, tests, fixes o pull requests.
+41. Swarm publica o exporta exclusivamente documentación QA, el reporte y sus evidencias;
+    nunca crea branches, commits, código de prueba ejecutable, fixes o pull requests.
 
 ## 16.2 Flujo Live Application
 
@@ -1019,17 +1027,19 @@ swarm-ai-qa/
 
 68. Mostrar al QA Director crear un plan y lanzar agentes.
 
-69. Visualizar Repository, Security, Browser, Accessibility y Performance trabajando.
+69. Abrir Test Design Studio y distinguir casos automatizados de validaciones manuales.
 
-70. Mostrar colaboración: un hallazgo confirmado por otro agente.
+70. Visualizar Repository, Security, Browser, Accessibility y Performance trabajando.
 
-71. Introducir la URL de la app y reproducir el defecto con trace/screenshot.
+71. Mostrar colaboración: un hallazgo confirmado por otro agente.
 
-72. Mostrar score, decisión “Blocked” y riesgo residual.
+72. Introducir la URL de la app y reproducir el defecto con trace/screenshot.
 
-73. Abrir el reporte final y recorrer evidencia, reproducción y recomendación de release.
+73. Mostrar score, decisión “Blocked” y riesgo residual.
 
-74. Cerrar con la visión: el mismo sistema se extiende a Docker, cloud y entornos privados.
+74. Abrir el reporte final y recorrer matriz, evidencia y riesgo residual.
+
+75. Cerrar con la visión: el mismo sistema se extiende a Docker, cloud y entornos privados.
 
 ## 28.2 Demo de respaldo
 

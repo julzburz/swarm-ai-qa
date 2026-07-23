@@ -7,7 +7,7 @@ from pydantic import AnyHttpUrl, Field
 
 from .common import EvidenceRefV1, NonEmptyStr, StrictModel
 from .evidence import CorrelatedFindingV1
-from .execution import CoverageSummaryV1
+from .execution import CoverageSummaryV1, TestCaseExecutionV1
 from .release import ReleaseDecisionV1
 
 
@@ -18,6 +18,9 @@ class QaRunReportV1(StrictModel):
     execution_summary: NonEmptyStr
     findings: list[CorrelatedFindingV1] = Field(default_factory=list)
     coverage: CoverageSummaryV1
+    test_case_results: list[TestCaseExecutionV1] = Field(
+        default_factory=list
+    )
     release_decision: ReleaseDecisionV1 | None = None
     residual_risks: list[NonEmptyStr] = Field(default_factory=list)
     artifact_refs: list[EvidenceRefV1] = Field(default_factory=list)

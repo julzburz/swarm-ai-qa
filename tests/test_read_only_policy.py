@@ -5,6 +5,7 @@ import unittest
 
 import yaml
 
+from schemas.execution import TestCaseDesignV1
 from schemas.specialists import (
     AccessibilityAgentOutputV1,
     BrowserAgentOutputV1,
@@ -64,10 +65,24 @@ class ReadOnlyProductPolicyTests(unittest.TestCase):
         self.assertNotIn("patch", fields)
         self.assertNotIn("source_code", fields)
 
+    def test_designed_cases_are_documentation_not_test_code(self) -> None:
+        fields = set(TestCaseDesignV1.model_fields)
+        self.assertNotIn("generated_test_code", fields)
+        self.assertNotIn("source_code", fields)
+        self.assertNotIn("patch", fields)
+        self.assertNotIn("repository_path", fields)
+
     def test_prd_declares_permanent_read_only_boundary(self) -> None:
         prd = (PROJECT_ROOT / "Swarm_AI_QA_PRD_v1.0.md").read_text(encoding="utf-8")
         self.assertIn("permanentemente read-only respecto al código", prd)
-        self.assertIn("nunca crea branches, commits, tests, fixes o pull requests", prd)
+        self.assertIn(
+            "nunca crea branches, commits, código de prueba ejecutable, fixes o pull requests",
+            prd,
+        )
+        self.assertIn(
+            "casos y escenarios Gherkin son",
+            prd,
+        )
 
 
 if __name__ == "__main__":

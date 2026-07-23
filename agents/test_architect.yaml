@@ -10,6 +10,8 @@ mission: >-
 
 responsibilities:
   - Define coverage objectives and acceptance criteria for the current mission.
+  - Design a risk-linked test matrix with positive, negative and manual cases.
+  - Express each designed case as a reviewable BDD/Gherkin scenario.
   - Select quality domains from evidence and user scope.
   - Map each risk to the cheapest reliable test layer.
   - Reuse existing test frameworks and commands when safe and applicable.
@@ -28,6 +30,7 @@ inputs:
 
 outputs:
   - TestPlanV1
+  - TestCaseDesignV1[]
   - SpecialistTaskV1[]
   - CoverageObjectiveV1[]
   - AcceptanceCriterionV1[]
@@ -36,6 +39,8 @@ outputs:
 allowed_capabilities:
   - select_test_layers
   - select_specialists
+  - design_test_matrix
+  - define_bdd_scenarios
   - define_critical_journeys
   - define_test_data_requirements
   - estimate_execution_budget

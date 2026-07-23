@@ -858,6 +858,185 @@ button {
   line-height: 1.5;
 }
 
+.testMatrixStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.testMatrixStats span {
+  padding: 10px 12px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: #f8f7f1;
+  font: 700 8px var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.testMatrixStats strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.testMatrix {
+  border-top: 1px solid var(--line);
+}
+
+.testCase {
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: white;
+}
+
+.testCase > summary {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 112px;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.testCase > summary::-webkit-details-marker {
+  display: none;
+}
+
+.testCase[open] > summary {
+  background: #f8f7f1;
+}
+
+.testCaseId {
+  color: var(--signal-dark);
+  font: 800 9px var(--font-geist-mono), monospace;
+}
+
+.testCaseTitle {
+  min-width: 0;
+}
+
+.testCaseTitle strong,
+.testCaseTitle small {
+  display: block;
+}
+
+.testCaseTitle strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.testCaseTitle small {
+  margin-top: 3px;
+  color: var(--muted);
+  font: 8px var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.caseStatus {
+  padding: 6px 7px;
+  text-align: center;
+  border: 1px solid var(--line);
+  font: 800 8px var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.caseStatus.passed {
+  color: #37630f;
+  border-color: #9dc66c;
+  background: #f1f9e4;
+}
+
+.caseStatus.failed {
+  color: #8b2914;
+  border-color: #d77e69;
+  background: #ffe7e1;
+}
+
+.caseStatus.observed {
+  color: #27516b;
+  border-color: #8eb7cf;
+  background: #edf7fc;
+}
+
+.caseStatus.manual_required,
+.caseStatus.blocked,
+.caseStatus.not_executed {
+  color: #74520b;
+  border-color: #d8bd72;
+  background: #fff8df;
+}
+
+.testCaseBody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.testCaseBody small {
+  color: var(--muted);
+  font: 800 8px var(--font-geist-mono), monospace;
+  letter-spacing: 0.08em;
+}
+
+.testCaseBody ul,
+.testCaseBody ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.testExpected,
+.testObserved {
+  padding: 11px;
+  border: 1px solid var(--line);
+}
+
+.testExpected p,
+.testObserved p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.testObserved span {
+  display: block;
+  margin-top: 7px;
+  color: var(--signal-dark);
+  font: 700 8px var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.gherkin {
+  grid-column: 1 / -1;
+}
+
+.gherkin summary {
+  width: max-content;
+  color: var(--signal-dark);
+  cursor: pointer;
+  font: 800 8px var(--font-geist-mono), monospace;
+}
+
+.gherkin pre {
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow-x: auto;
+  color: #d8e7de;
+  background: #17211c;
+  font: 10px/1.6 var(--font-geist-mono), monospace;
+  white-space: pre-wrap;
+}
+
 .finding {
   display: grid;
   grid-template-columns: 72px 1fr;
@@ -1018,7 +1197,20 @@ footer {
   .sourceGrid,
   .depthGrid,
   .liveGrid,
-  .componentGrid {
+  .componentGrid,
+  .testMatrixStats {
+    grid-template-columns: 1fr;
+  }
+
+  .testCase > summary {
+    grid-template-columns: 1fr auto;
+  }
+
+  .testCaseId {
+    grid-column: 1 / -1;
+  }
+
+  .testCaseBody {
     grid-template-columns: 1fr;
   }
 

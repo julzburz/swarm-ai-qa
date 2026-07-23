@@ -3,7 +3,12 @@ from __future__ import annotations
 from orchestrator.ports import AgentExecutionContextV1
 from schemas.common import QualityDomain
 from schemas.evidence import AgentOutputEnvelopeV1, CorrelatedFindingV1
-from schemas.execution import CoverageSummaryV1, SpecialistTaskV1
+from schemas.execution import (
+    CoverageSummaryV1,
+    SpecialistTaskV1,
+    TestCaseDesignV1,
+    TestCaseExecutionV1,
+)
 from schemas.reporting import QaRunReportV1
 from schemas.specialists import (
     AccessibilityAgentOutputV1,
@@ -381,6 +386,30 @@ class EvidenceReportingExecutor:
                 "Repository and runtime evidence are correlated by mission and "
                 "risk context; route-to-source causality remains unproven."
             )
+        test_case_results = _test_case_results(
+            plan.test_cases,
+            outputs,
+            repository=repository,
+            browser=browser,
+            accessibility=accessibility,
+            security=security,
+            performance=performance,
+        )
+        automated_completed = sum(
+            result.status
+            in {"passed", "failed", "blocked", "observed"}
+            for result in test_case_results
+        )
+        manual_required = sum(
+            result.status == "manual_required"
+            for result in test_case_results
+        )
+        if test_case_results:
+            summary_parts.append(
+                f"Test Design Studio trazó {len(test_case_results)} caso(s); "
+                f"{automated_completed} caso(s) automatizados alcanzaron un "
+                f"resultado y {manual_required} requieren ejecución humana"
+            )
         execution_summary = (
             "; ".join(summary_parts)
             + ". No repository commands were executed and no source files were modified."
@@ -396,6 +425,7 @@ class EvidenceReportingExecutor:
             execution_summary=execution_summary,
             findings=correlated,
             coverage=coverage,
+            test_case_results=test_case_results,
             residual_risks=residual_risks,
             artifact_refs=artifact_refs,
         )
@@ -415,3 +445,259 @@ class EvidenceReportingExecutor:
 
 def _unique_evidence(values):
     return list({value.uri: value for value in values}.values())
+
+
+def _test_case_results(
+    test_cases: list[TestCaseDesignV1],
+    outputs: dict[str, AgentOutputEnvelopeV1],
+    *,
+    repository,
+    browser,
+    accessibility,
+    security,
+    performance,
+) -> list[TestCaseExecutionV1]:
+    results: list[TestCaseExecutionV1] = []
+    for test_case in test_cases:
+        if test_case.execution_mode == "manual":
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status="manual_required",
+                    observation=(
+                        "Diseñado y conservado para ejecución humana; no se "
+                        "afirma un resultado ni evidencia automatizada."
+                    ),
+                )
+            )
+            continue
+
+        envelope = outputs.get(test_case.assigned_agent)
+        if envelope is None:
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status="not_executed",
+                    observation=(
+                        f"{test_case.assigned_agent} no produjo una salida "
+                        "para esta ejecución."
+                    ),
+                )
+            )
+            continue
+
+        if test_case.domain == QualityDomain.REPOSITORY:
+            evidence = _unique_evidence(envelope.evidence_refs)
+            if repository is not None and evidence:
+                results.append(
+                    TestCaseExecutionV1(
+                        case_id=test_case.case_id,
+                        status="observed",
+                        observation=(
+                            "La estructura y tecnología del repositorio "
+                            "quedaron documentadas sin ejecutar comandos."
+                        ),
+                        executed_by=test_case.assigned_agent,
+                        evidence_refs=evidence,
+                    )
+                )
+            else:
+                results.append(
+                    TestCaseExecutionV1(
+                        case_id=test_case.case_id,
+                        status="blocked",
+                        observation=(
+                            "El análisis del repositorio no proporcionó "
+                            "evidencia material para este caso."
+                        ),
+                        executed_by=test_case.assigned_agent,
+                    )
+                )
+            continue
+
+        if test_case.domain == QualityDomain.FUNCTIONAL:
+            journey = next(
+                (
+                    item
+                    for item in browser.journeys
+                    if _same_location(
+                        item.environment_url,
+                        test_case.target_reference,
+                    )
+                ),
+                None,
+            ) if browser is not None else None
+            if journey is None:
+                results.append(
+                    TestCaseExecutionV1(
+                        case_id=test_case.case_id,
+                        status="blocked",
+                        observation=(
+                            "Ningún journey de Browser coincidió con el target "
+                            "planificado."
+                        ),
+                        executed_by=test_case.assigned_agent,
+                    )
+                )
+                continue
+            related = [
+                finding
+                for finding in browser.findings
+                if test_case.target_reference
+                and any(
+                    _same_location(location, test_case.target_reference)
+                    for location in finding.affected_locations
+                )
+            ]
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status=journey.status,
+                    observation=(
+                        f"El journey de Browser terminó con estado "
+                        f"{journey.status} y {len(related)} finding(s) enlazados."
+                    ),
+                    executed_by=test_case.assigned_agent,
+                    evidence_refs=journey.evidence_refs,
+                    finding_ids=[
+                        finding.finding_id for finding in related
+                    ],
+                )
+            )
+            continue
+
+        if test_case.domain == QualityDomain.ACCESSIBILITY:
+            related = _findings_for_target(
+                accessibility.findings if accessibility is not None else [],
+                test_case.target_reference,
+            )
+            evidence = _unique_evidence(envelope.evidence_refs)
+            if accessibility is None or not evidence:
+                status = "blocked"
+                observation = (
+                    "Accessibility no proporcionó evidencia material."
+                )
+            else:
+                status = "failed" if related else "passed"
+                observation = (
+                    f"axe completó la cobertura automatizada con "
+                    f"{len(related)} grupo(s) de violaciones enlazados al "
+                    "target. No se afirma conformidad WCAG manual."
+                )
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status=status,
+                    observation=observation,
+                    executed_by=test_case.assigned_agent,
+                    evidence_refs=evidence,
+                    finding_ids=[
+                        finding.finding_id for finding in related
+                    ],
+                )
+            )
+            continue
+
+        if test_case.domain == QualityDomain.SECURITY:
+            related = _findings_for_target(
+                security.findings if security is not None else [],
+                test_case.target_reference,
+            )
+            evidence = _unique_evidence(envelope.evidence_refs)
+            if security is None or not evidence:
+                status = "blocked"
+                observation = (
+                    "Security no proporcionó evidencia material."
+                )
+            elif security.coverage.mode == "repository_scope_only":
+                status = "observed"
+                observation = (
+                    "El alcance de seguridad del repositorio quedó documentado; "
+                    "los escaneos de código, dependencias y secretos siguen pendientes."
+                )
+            else:
+                status = "failed" if related else "passed"
+                observation = (
+                    f"La auditoría pasiva terminó con {len(related)} señal(es) "
+                    "enlazadas al target. No se afirma explotabilidad."
+                )
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status=status,
+                    observation=observation,
+                    executed_by=test_case.assigned_agent,
+                    evidence_refs=evidence,
+                    finding_ids=[
+                        finding.finding_id for finding in related
+                    ],
+                )
+            )
+            continue
+
+        if test_case.domain == QualityDomain.PERFORMANCE:
+            related = _findings_for_target(
+                performance.findings if performance is not None else [],
+                test_case.target_reference,
+            )
+            evidence = _unique_evidence(envelope.evidence_refs)
+            if (
+                performance is None
+                or performance.coverage.successful_samples == 0
+                or not evidence
+            ):
+                status = "blocked"
+                observation = (
+                    "Performance smoke no produjo una muestra exitosa "
+                    "respaldada por evidencia."
+                )
+            else:
+                status = "observed"
+                observation = (
+                    f"Las mediciones single-user terminaron con "
+                    f"{len(related)} señal(es) de umbral. No se afirma "
+                    "performance real ni regresión."
+                )
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status=status,
+                    observation=observation,
+                    executed_by=test_case.assigned_agent,
+                    evidence_refs=evidence,
+                    finding_ids=[
+                        finding.finding_id for finding in related
+                    ],
+                )
+            )
+            continue
+
+        results.append(
+            TestCaseExecutionV1(
+                case_id=test_case.case_id,
+                status="not_executed",
+                observation=(
+                    "El caso está diseñado, pero este dominio todavía no "
+                    "dispone de un adaptador de resultados."
+                ),
+            )
+        )
+    return results
+
+
+def _findings_for_target(findings, target_reference):
+    return [
+        finding
+        for finding in findings
+        if target_reference
+        and any(
+            _same_location(location, target_reference)
+            for location in finding.affected_locations
+        )
+    ]
+
+
+def _same_location(left: str | None, right: str | None) -> bool:
+    if left is None or right is None:
+        return False
+    return left.rstrip("/") == right.rstrip("/")

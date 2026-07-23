@@ -26,6 +26,8 @@ La fundacion ejecutable incluye:
 - correlacion Browser + Security por URL autorizada, sin afirmar explotabilidad;
 - worker Chromium y executor real de Performance Test Engineer single-user;
 - correlacion Browser + Performance por URL autorizada, sin afirmar regresion;
+- Test Design Studio con estrategia, matriz, casos y BDD/Gherkin;
+- trazabilidad caso -> ejecución -> evidencia -> findings, sin simular resultados manuales;
 - aplicacion web demo local y determinista;
 - frontend Next.js de QA Director conectado al control plane;
 - deteccion de monorepos y componentes con impacto de cambio por componente;
@@ -33,7 +35,7 @@ La fundacion ejecutable incluye:
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
 - consulta filtrable de findings y descarga de artifacts con verificacion SHA-256;
-- 76 pruebas automatizadas verdes.
+- 80 pruebas automatizadas verdes.
 
 El proyecto esta versionado en `https://github.com/julzburz/swarm-ai-qa`. La rama estable es
 `main`; no copiar ni publicar `.env`, `.data/` ni credenciales.
@@ -451,6 +453,32 @@ samples=3/3
 status=completed
 restored_after_backend_restart=true
 artifact_sha256_verified=true
+```
+
+## Actualizacion implementada: Test Design Studio
+
+Test Architect genera una matriz compacta y trazable por ruta y dominio:
+
+- caso, prioridad, riesgo, precondiciones, pasos y resultado esperado;
+- escenario BDD/Gherkin en español;
+- modo `automated` o `manual`;
+- agente responsable y target exacto;
+- resultado final enlazado a evidencia y findings;
+- estados `passed`, `failed`, `observed`, `blocked`, `manual_required` y `not_executed`.
+
+Los casos manuales nunca reciben executor ni evidencia automática. Gherkin es documentación QA
+y no se escribe como código o archivos de prueba dentro del repositorio evaluado.
+
+Validacion Neon real:
+
+```text
+run_id=baea006c-0bae-4784-a2ce-9c2473da5172
+target=https://example.com/
+test_cases=8
+automated=4
+manual_required=4
+restored_after_backend_restart=true
+frontend_proxy_verified=true
 ```
 
 ## Limitaciones conocidas
