@@ -4,7 +4,10 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from schemas.common import StrictModel
+from pydantic import Field
+
+from schemas.common import QualityDomain, Severity, StrictModel
+from schemas.evidence import CorrelatedFindingV1
 from schemas.mission import MissionMode, SwarmExecutionPlanV1, UserMissionRequestV1
 from orchestrator.models import RunStatus
 
@@ -50,3 +53,35 @@ class RunSummaryV1(StrictModel):
     completed_agents: int
     created_at: datetime
     updated_at: datetime
+
+
+class FindingListResponseV1(StrictModel):
+    run_id: UUID
+    run_status: RunStatus
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1)
+    offset: int = Field(ge=0)
+    domain: QualityDomain | None = None
+    severity: Severity | None = None
+    items: list[CorrelatedFindingV1]
+
+
+class ArtifactSummaryV1(StrictModel):
+    artifact_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    uri: str
+    media_type: str
+    sha256: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+    redacted: bool
+    description: str | None = None
+    produced_by: str
+    task_id: UUID
+    available: bool
+    download_url: str | None = None
+
+
+class ArtifactListResponseV1(StrictModel):
+    run_id: UUID
+    run_status: RunStatus
+    total: int = Field(ge=0)
+    downloadable: int = Field(ge=0)
+    items: list[ArtifactSummaryV1]

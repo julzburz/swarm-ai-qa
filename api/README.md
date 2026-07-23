@@ -29,6 +29,19 @@ Bearer está activa. La clave nunca se devuelve en respuestas ni logs.
 `GET /v1/runs?limit=20&offset=0` lista ejecuciones persistidas, ordenadas por su actualización
 más reciente. QA Director consume este endpoint para reabrir análisis conservados en Neon.
 
+## Resultados y artifacts
+
+- `GET /v1/runs/{run_id}/findings` devuelve findings correlacionados y permite filtrar por
+  `domain`, `severity`, `limit` y `offset`.
+- `GET /v1/runs/{run_id}/artifacts` cataloga evidencia local y referencias externas sin exponer
+  rutas del filesystem.
+- `GET /v1/runs/{run_id}/artifacts/{artifact_id}` descarga solamente evidencia materializada
+  que pertenece al run y cuyo SHA-256 coincide con la referencia persistida.
+
+Los IDs de descarga son hashes opacos de la URI interna. El servidor no acepta rutas de archivo
+del cliente, valida que el archivo resuelva dentro de `SWARM_ARTIFACT_ROOT` y protege todos estos
+endpoints con el mismo Bearer opcional de `/v1/*`.
+
 ## Flujo seguro
 
 1. Enviar una `UserMissionRequestV1` a `POST /v1/plans/preview`.
@@ -60,8 +73,8 @@ aun faltan.
 
 ## GitHub + Playwright + axe automation
 
-La factory compuesta agrega Browser Automation Engineer y Accessibility Specialist para
-misiones runtime de los dominios `functional` y `accessibility`:
+La factory compuesta agrega Browser Automation Engineer, Accessibility Specialist y Security
+Test Engineer para misiones runtime:
 
 ```powershell
 python -m playwright install chromium

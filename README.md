@@ -57,6 +57,7 @@ addresses.
 ## Working capabilities
 
 - FastAPI control plane with plan preview, approval, cancellation, durable checkpoints and SSE.
+- Filterable persisted findings plus integrity-checked artifact catalog and downloads.
 - Public GitHub repository and optional pull-request inspection using bounded REST `GET` requests.
 - Canonical repository validation and explicit private-repository server allowlist.
 - Language and framework recognition from repository trees and captured manifests.
@@ -71,6 +72,7 @@ addresses.
 - Browser + security correlation by the exact allowlisted runtime URL.
 - Repository + runtime evidence correlation without unsupported causal claims.
 - Next.js QA Director UI with real planning, execution status, event streaming and reports.
+- Evidence downloads routed through the authenticated server-side control-plane proxy.
 - Automatic Neon persistence when `DATABASE_URL` exists, with SQLite fallback for local work.
 - Startup validation for the Neon connection and required run tables.
 
@@ -145,7 +147,7 @@ Important variables:
 | `GITHUB_TOKEN` | Read-only access for explicitly allowlisted private repositories |
 | `SWARM_GITHUB_ALLOWED_PRIVATE_REPOSITORIES` | Canonical private repository IDs |
 | `SWARM_SQLITE_PATH` | Local checkpoint database |
-| `SWARM_ARTIFACT_ROOT` | Local screenshots and Playwright traces |
+| `SWARM_ARTIFACT_ROOT` | Local evidence root used by workers and verified downloads |
 | `SWARM_AXE_SCRIPT_PATH` | Optional override for the installed axe-core script |
 
 Public repositories are intentionally inspected without the server's private GitHub token.
@@ -159,7 +161,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 67 tests
+Ran 72 tests
 OK
 ```
 

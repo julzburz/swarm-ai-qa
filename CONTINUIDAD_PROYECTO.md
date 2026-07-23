@@ -30,7 +30,8 @@ La fundacion ejecutable incluye:
 - seleccion automatica y persistencia durable en Neon con fallback SQLite;
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
-- 67 pruebas automatizadas verdes.
+- consulta filtrable de findings y descarga de artifacts con verificacion SHA-256;
+- 72 pruebas automatizadas verdes.
 
 La carpeta no estaba inicializada como repositorio Git al realizar esta actualizacion. Si se
 trabaja mediante una carpeta sincronizada, verificar que todos los archivos hayan terminado

@@ -68,6 +68,17 @@ type RunSummary = {
   updated_at: string;
 };
 
+type ArtifactSummary = {
+  artifact_id: string;
+  uri: string;
+  media_type: string;
+  redacted: boolean;
+  description?: string;
+  produced_by: string;
+  available: boolean;
+  download_url?: string;
+};
+
 const API = "/control-plane";
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 const EVENT_TYPES = [
@@ -148,6 +159,7 @@ export default function QaDirectorPage() {
   const [run, setRun] = useState<RunState | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [history, setHistory] = useState<RunSummary[]>([]);
+  const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const streamRef = useRef<EventSource | null>(null);
@@ -269,6 +281,20 @@ export default function QaDirectorPage() {
       streamRef.current?.close();
       setPhase(state.status === "completed" ? "report" : "running");
       void loadHistory();
+      void loadArtifacts(state.run_id);
+    }
+  }
+
+  async function loadArtifacts(runId: string) {
+    try {
+      const response = await fetch(`${API}/v1/runs/${runId}/artifacts`, {
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      setArtifacts(payload.items ?? []);
+    } catch {
+      setArtifacts([]);
     }
   }
 
@@ -289,11 +315,12 @@ export default function QaDirectorPage() {
     setError("");
     streamRef.current?.close();
     try {
-      const [stateResponse, eventsResponse] = await Promise.all([
+      const [stateResponse, eventsResponse, artifactsResponse] = await Promise.all([
         fetch(`${API}/v1/runs/${summary.run_id}`, { cache: "no-store" }),
         fetch(`${API}/v1/runs/${summary.run_id}/events`, { cache: "no-store" }),
+        fetch(`${API}/v1/runs/${summary.run_id}/artifacts`, { cache: "no-store" }),
       ]);
-      if (!stateResponse.ok || !eventsResponse.ok) {
+      if (!stateResponse.ok || !eventsResponse.ok || !artifactsResponse.ok) {
         throw new Error("No fue posible recuperar este análisis.");
       }
       const state: RunState = await stateResponse.json();
@@ -305,6 +332,8 @@ export default function QaDirectorPage() {
         executable: true,
       });
       setEvents(await eventsResponse.json());
+      const artifactPayload = await artifactsResponse.json();
+      setArtifacts(artifactPayload.items ?? []);
       setPhase(state.status === "completed" ? "report" : "running");
       if (!TERMINAL.has(state.status)) {
         openEventStream(
@@ -352,6 +381,7 @@ export default function QaDirectorPage() {
       }
       setPhase("running");
       setEvents([]);
+      setArtifacts([]);
       await refreshRun(payload.run_id);
       await loadHistory();
       openEventStream(payload.run_id, payload.event_stream_url);
@@ -373,6 +403,7 @@ export default function QaDirectorPage() {
     setPreview(null);
     setRun(null);
     setEvents([]);
+    setArtifacts([]);
     setError("");
     setPhase("configure");
   }
@@ -947,6 +978,46 @@ export default function QaDirectorPage() {
                           Esto no equivale a ausencia total de defectos.
                         </div>
                       )}
+                    </section>
+                  )}
+                  {!!artifacts.length && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>EVIDENCE ARTIFACTS</span>
+                        <strong>
+                          {artifacts.filter((artifact) => artifact.available).length}/
+                          {artifacts.length} disponibles
+                        </strong>
+                      </div>
+                      <div className="artifactList">
+                        {artifacts.map((artifact) => (
+                          <article className="artifactItem" key={artifact.artifact_id}>
+                            <div>
+                              <small>
+                                {agentName(artifact.produced_by)} · {artifact.media_type}
+                              </small>
+                              <strong>
+                                {artifact.description ?? artifact.uri.split("/").at(-1)}
+                              </strong>
+                              <span>
+                                {artifact.redacted ? "REDACTADO" : "EVIDENCIA CAPTURADA"}
+                              </span>
+                            </div>
+                            {artifact.available && artifact.download_url ? (
+                              <a
+                                className="artifactDownload"
+                                href={`${API}${artifact.download_url}`}
+                              >
+                                DESCARGAR ↓
+                              </a>
+                            ) : (
+                              <span className="artifactUnavailable">
+                                REFERENCIA EXTERNA
+                              </span>
+                            )}
+                          </article>
+                        ))}
+                      </div>
                     </section>
                   )}
                 </div>

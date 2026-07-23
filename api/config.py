@@ -13,10 +13,11 @@ class ApiSettings:
     """Small environment-backed settings surface for the first API slice."""
 
     sqlite_path: Path = Path(".data/swarm-ai-qa.db")
+    artifact_root: Path = Path(".data/artifacts")
     storage_backend: Literal["sqlite", "neon"] = "sqlite"
     api_key: str | None = field(default=None, repr=False)
     title: str = "Swarm AI QA Control Plane"
-    version: str = "0.5.0"
+    version: str = "0.6.0"
 
     @classmethod
     def from_env(
@@ -28,6 +29,12 @@ class ApiSettings:
         sqlite_path = os.getenv("SWARM_SQLITE_PATH", ".data/swarm-ai-qa.db").strip()
         if not sqlite_path:
             raise ValueError("SWARM_SQLITE_PATH cannot be empty")
+        artifact_root = os.getenv(
+            "SWARM_ARTIFACT_ROOT",
+            ".data/artifacts",
+        ).strip()
+        if not artifact_root:
+            raise ValueError("SWARM_ARTIFACT_ROOT cannot be empty")
         requested = os.getenv("SWARM_STORAGE_BACKEND", "auto").strip().lower()
         if requested not in {"auto", "sqlite", "neon"}:
             raise ValueError(
@@ -48,6 +55,7 @@ class ApiSettings:
             raise ValueError("SWARM_API_KEY must contain at least 32 characters")
         return cls(
             sqlite_path=Path(sqlite_path),
+            artifact_root=Path(artifact_root),
             storage_backend=storage_backend,
             api_key=api_key,
         )

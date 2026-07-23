@@ -902,6 +902,75 @@ button {
   font-size: 12px;
 }
 
+.artifactList {
+  display: grid;
+  gap: 8px;
+}
+
+.artifactItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: #f8f7f1;
+}
+
+.artifactItem div {
+  min-width: 0;
+}
+
+.artifactItem small,
+.artifactItem strong,
+.artifactItem span {
+  display: block;
+}
+
+.artifactItem small {
+  color: var(--muted);
+  font: 8px var(--font-geist-mono), monospace;
+  text-transform: uppercase;
+}
+
+.artifactItem strong {
+  margin: 5px 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifactItem div > span {
+  color: var(--signal-dark);
+  font: 700 8px var(--font-geist-mono), monospace;
+}
+
+.artifactDownload,
+.artifactUnavailable {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  font: 800 8px var(--font-geist-mono), monospace;
+  letter-spacing: 0.06em;
+}
+
+.artifactDownload {
+  color: #0b1510;
+  border: 1px solid #0b1510;
+  background: var(--signal);
+  text-decoration: none;
+}
+
+.artifactDownload:hover {
+  box-shadow: 2px 2px 0 #0b1510;
+  transform: translate(-1px, -1px);
+}
+
+.artifactUnavailable {
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
 footer {
   max-width: 1400px;
   margin: 0 auto;
@@ -959,6 +1028,11 @@ footer {
 
   .field.spanTwo {
     grid-column: auto;
+  }
+
+  .artifactItem {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
