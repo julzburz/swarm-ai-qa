@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import Counter
 from collections import defaultdict
 from pathlib import PurePosixPath
 import re
+import time
 
 from adapters.github import GitHubInspectionV1, GitHubReadClient
 from orchestrator.ports import AgentExecutionContextV1
@@ -81,8 +83,55 @@ COMPONENT_MANIFEST_NAMES = {
 class RepositoryAnalystExecutor:
     agent_id = "repository_analyst"
 
-    def __init__(self, client: GitHubReadClient) -> None:
+    def __init__(
+        self,
+        client: GitHubReadClient,
+        *,
+        reconnaissance_cache_seconds: float = 600.0,
+    ) -> None:
+        if reconnaissance_cache_seconds <= 0:
+            raise ValueError("reconnaissance_cache_seconds must be positive")
         self.client = client
+        self.reconnaissance_cache_seconds = reconnaissance_cache_seconds
+        self._reconnaissance_cache: dict[
+            tuple[str, str, bool, int | None],
+            tuple[float, RepositoryAnalysisOutputV1],
+        ] = {}
+        self._reconnaissance_lock = asyncio.Lock()
+
+    async def inspect_target(
+        self,
+        target: RepositoryTargetV1,
+        pull_request_number: int | None = None,
+    ) -> RepositoryAnalysisOutputV1:
+        """Build a bounded read-only profile, briefly caching the approved snapshot."""
+
+        key = (
+            target.repository_id.casefold(),
+            target.default_branch.casefold(),
+            target.private,
+            pull_request_number,
+        )
+        now = time.monotonic()
+        cached = self._reconnaissance_cache.get(key)
+        if cached is not None and now - cached[0] <= self.reconnaissance_cache_seconds:
+            return cached[1].model_copy(deep=True)
+
+        async with self._reconnaissance_lock:
+            now = time.monotonic()
+            cached = self._reconnaissance_cache.get(key)
+            if cached is not None and now - cached[0] <= self.reconnaissance_cache_seconds:
+                return cached[1].model_copy(deep=True)
+
+            inspection = await self.client.inspect(target, pull_request_number)
+            output = self._analyze(target, inspection)
+            self._reconnaissance_cache = {
+                cache_key: value
+                for cache_key, value in self._reconnaissance_cache.items()
+                if now - value[0] <= self.reconnaissance_cache_seconds
+            }
+            self._reconnaissance_cache[key] = (now, output)
+            return output.model_copy(deep=True)
 
     async def execute(
         self,
@@ -92,8 +141,10 @@ class RepositoryAnalystExecutor:
         target = context.mission.repository_target
         if target is None:
             raise ValueError("repository_analyst requires a repository_target")
-        inspection = await self.client.inspect(target, context.mission.pull_request_number)
-        output = self._analyze(target, inspection)
+        output = await self.inspect_target(
+            target,
+            context.mission.pull_request_number,
+        )
         evidence = _unique_evidence(output.repository_context.evidence_refs)
         return AgentOutputEnvelopeV1(
             run_id=context.run_id,

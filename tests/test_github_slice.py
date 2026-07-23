@@ -406,13 +406,35 @@ class GitHubVerticalSliceTests(unittest.TestCase):
                 json=mission.model_dump(mode="json"),
             )
             self.assertEqual(preview.status_code, 200)
-            self.assertTrue(preview.json()["executable"])
+            preview_body = preview.json()
+            self.assertTrue(preview_body["executable"])
+            self.assertEqual(
+                preview_body["planning_basis"],
+                "repository_reconnaissance",
+            )
+            self.assertEqual(
+                preview_body["reconnaissance"]["project_profile"]["project_type"],
+                "single_component",
+            )
+            self.assertNotIn(
+                "stack pendiente de confirmar",
+                preview_body["plan"]["summary"],
+            )
+            self.assertIn("Next.js", preview_body["plan"]["summary"])
 
             accepted = client.post(
                 "/v1/runs",
-                json={"mission": mission.model_dump(mode="json"), "approved": True},
+                json={
+                    "mission": mission.model_dump(mode="json"),
+                    "approved": True,
+                    "approved_plan_id": preview_body["plan"]["plan_id"],
+                },
             )
             self.assertEqual(accepted.status_code, 202)
+            self.assertEqual(
+                accepted.json()["plan"]["plan_id"],
+                preview_body["plan"]["plan_id"],
+            )
             run_id = accepted.json()["run_id"]
             state = self._wait_for_terminal(client, run_id)
             events = client.get(f"/v1/runs/{run_id}/events").json()

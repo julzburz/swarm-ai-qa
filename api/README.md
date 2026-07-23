@@ -45,10 +45,18 @@ endpoints con el mismo Bearer opcional de `/v1/*`.
 ## Flujo seguro
 
 1. Enviar una `UserMissionRequestV1` a `POST /v1/plans/preview`.
-2. Revisar plan, restricciones y `missing_executors`.
-3. Conectar executors reales mediante `create_app(registry=...)`.
-4. Enviar `{ "mission": ..., "approved": true }` a `POST /v1/runs`.
-5. Consultar el estado o suscribirse a `/events/stream`.
+2. Si existe un target GitHub, el backend realiza reconocimiento read-only y devuelve
+   `reconnaissance`, `planning_basis=repository_reconnaissance` y un plan construido
+   desde el perfil tecnológico observado.
+3. Revisar stack, componentes, plan, restricciones y `missing_executors`.
+4. Conectar executors reales mediante `create_app(registry=...)`.
+5. Enviar `{ "mission": ..., "approved": true, "approved_plan_id": "..." }` a
+   `POST /v1/runs`. El ID debe corresponder al plan reconocido y aprobado.
+6. Consultar el estado o suscribirse a `/events/stream`.
+
+El reconocimiento consulta exclusivamente árbol, metadatos y manifests mediante GitHub REST
+`GET`. Su snapshot se reutiliza brevemente para ejecutar el plan aprobado sin duplicar lecturas;
+no clona, ejecuta ni modifica código.
 
 Test Architect conserva `test_cases` dentro de `TestPlanV1`. Cada caso incluye riesgo,
 prioridad, precondiciones, pasos, resultado esperado, modo de ejecución y escenario

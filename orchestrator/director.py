@@ -61,8 +61,8 @@ class RuleBasedQaDirector:
             )
             tasks.append(repository_task)
             prerequisite_ids.append(repository_task.task_id)
-            reasons[repository_task.agent_id] = (
-                "El repositorio requiere reconocimiento tecnológico y análisis del cambio."
+            reasons[repository_task.agent_id] = self._repository_reason(
+                project_profile
             )
 
         architect_task = SpecialistTaskV1(
@@ -99,7 +99,10 @@ class RuleBasedQaDirector:
             )
             tasks.append(task)
             specialist_ids.append(task.task_id)
-            reasons[agent_id] = f"La misión incluye el dominio {domain.value}."
+            reasons[agent_id] = self._specialist_reason(
+                domain,
+                project_profile,
+            )
 
         evidence_dependencies = list(
             dict.fromkeys(
@@ -221,6 +224,42 @@ class RuleBasedQaDirector:
             QualityDomain.ACCESSIBILITY: 15,
             QualityDomain.PERFORMANCE: 15,
         }.get(domain, 0)
+
+    def _repository_reason(self, profile: ProjectProfileV1 | None) -> str:
+        if profile is None:
+            return (
+                "El repositorio requiere reconocimiento tecnológico "
+                "y análisis del cambio."
+            )
+        return (
+            f"El reconocimiento read-only confirmó {len(profile.components)} "
+            f"componente(s) de tipo {profile.project_type}."
+        )
+
+    def _specialist_reason(
+        self,
+        domain: QualityDomain,
+        profile: ProjectProfileV1 | None,
+    ) -> str:
+        if profile is None:
+            return f"La misión incluye el dominio {domain.value}."
+        technologies = sorted(
+            {
+                technology.name
+                for component in profile.components
+                for technology in (
+                    component.languages
+                    + component.frameworks
+                    + component.runtimes
+                    + component.test_frameworks
+                )
+            }
+        )
+        stack = ", ".join(technologies[:6]) or "stack sin confirmar"
+        return (
+            f"El perfil detectado ({stack}) y la misión requieren cobertura "
+            f"del dominio {domain.value}."
+        )
 
     def _summary(
         self,

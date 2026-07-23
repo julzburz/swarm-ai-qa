@@ -643,6 +643,194 @@ button {
   margin: 8px 0 0;
 }
 
+.discoveryStage {
+  min-height: 520px;
+}
+
+.scanner {
+  position: relative;
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  align-items: center;
+  gap: 18px;
+  min-height: 132px;
+  padding: 22px;
+  overflow: hidden;
+  color: #dce5df;
+  background:
+    linear-gradient(90deg, rgba(184, 242, 75, 0.08), transparent 40%),
+    var(--night);
+}
+
+.scanner::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -25%;
+  width: 22%;
+  content: "";
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(184, 242, 75, 0.18),
+    transparent
+  );
+  animation: scannerSweep 1.8s linear infinite;
+}
+
+.scannerPulse {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--signal);
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 9px var(--night),
+    inset 0 0 0 11px rgba(184, 242, 75, 0.5),
+    0 0 24px rgba(184, 242, 75, 0.28);
+  animation: scannerPulse 1.2s ease-in-out infinite;
+}
+
+.scanner strong {
+  color: var(--signal);
+  font: 800 12px var(--font-geist-mono), monospace;
+  letter-spacing: 0.04em;
+}
+
+.scanner p {
+  max-width: 720px;
+  margin: 9px 0 0;
+  color: #9faaa4;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.discoveryChecks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.discoveryChecks span {
+  padding: 12px;
+  color: #909a94;
+  border: 1px solid var(--line);
+  background: white;
+  font: 700 9px var(--font-geist-mono), monospace;
+}
+
+.discoveryChecks span.active {
+  color: var(--signal-dark);
+  border-color: #9dbd68;
+  background: #edf8d7;
+}
+
+.boundaryNotice,
+.runtimeBasis {
+  margin-top: 12px;
+  padding: 13px 15px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: #f7f6f0;
+  font: 10px/1.55 var(--font-geist-mono), monospace;
+}
+
+@keyframes scannerSweep {
+  to {
+    left: 110%;
+  }
+}
+
+@keyframes scannerPulse {
+  50% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+}
+
+.reconResult {
+  margin-bottom: 12px;
+  padding: 17px 19px;
+  border: 1px solid var(--ink);
+  background: #f8f7f1;
+}
+
+.reconHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.reconHeader span,
+.reconHeader small {
+  display: block;
+  color: var(--muted);
+  font: 700 8px var(--font-geist-mono), monospace;
+  letter-spacing: 0.09em;
+}
+
+.reconHeader strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+}
+
+.reconHeader > div:last-child {
+  text-align: right;
+}
+
+.reconHeader > div:last-child strong {
+  color: var(--signal-dark);
+  font-size: 21px;
+}
+
+.reconMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 15px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.reconMetrics span {
+  color: var(--muted);
+  font: 9px var(--font-geist-mono), monospace;
+}
+
+.reconMetrics strong {
+  margin-right: 5px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.technologyRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.technologyRow span {
+  padding: 6px 8px;
+  color: var(--signal-dark);
+  border: 1px solid #bad786;
+  background: #edf8d7;
+  font: 800 8px var(--font-geist-mono), monospace;
+}
+
+.reconComponents {
+  margin-top: 14px;
+}
+
+.reconUnknowns {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .planSummary {
   padding: 17px 19px;
   color: white;
@@ -714,6 +902,13 @@ button {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 11px;
+}
+
+.agentObjective {
+  display: block;
+  margin-top: 4px;
+  color: #89928d;
+  font: 8px/1.35 var(--font-geist-mono), monospace;
 }
 
 .status,
@@ -1245,6 +1440,7 @@ footer {
   .depthGrid,
   .liveGrid,
   .componentGrid,
+  .discoveryChecks,
   .testMatrixStats {
     grid-template-columns: 1fr;
   }

@@ -11,7 +11,52 @@ type Domain =
   | "accessibility"
   | "security"
   | "performance";
-type Phase = "configure" | "preview" | "running" | "report";
+type Phase = "configure" | "discovery" | "preview" | "running" | "report";
+
+type TechnologyDetection = {
+  name: string;
+  version?: string;
+};
+
+type ProjectComponent = {
+  component_id: string;
+  path: string;
+  component_type: string;
+  languages: TechnologyDetection[];
+  frameworks: TechnologyDetection[];
+  runtimes: TechnologyDetection[];
+  package_managers: TechnologyDetection[];
+  test_frameworks: TechnologyDetection[];
+};
+
+type ProjectProfile = {
+  profile_id: string;
+  project_type: string;
+  overall_confidence: number;
+  components: ProjectComponent[];
+  unknowns: string[];
+};
+
+type RepositoryReconnaissance = {
+  repository_context: {
+    snapshot: {
+      commit_sha: string;
+      file_count: number;
+      total_bytes: number;
+      captured_paths: string[];
+    };
+  };
+  project_profile: ProjectProfile;
+  change_impact?: {
+    global_risk: string;
+    impacted_surfaces: Array<{
+      surface_id: string;
+      component_id: string;
+      paths: string[];
+      risk_hypotheses: string[];
+    }>;
+  };
+};
 
 type PlanTask = {
   task_id: string;
@@ -24,12 +69,19 @@ type PlanTask = {
 type PlanPreview = {
   mission: Record<string, unknown>;
   plan: {
+    plan_id: string;
     summary: string;
     tasks: PlanTask[];
+    agent_selection_reasons: Record<string, string>;
     estimated_duration_seconds: number;
     estimated_requests: number;
     production_restrictions: string[];
   };
+  reconnaissance: RepositoryReconnaissance | null;
+  planning_basis:
+    | "repository_reconnaissance"
+    | "runtime_inputs"
+    | "mission_inputs";
   missing_executors: string[];
   executable: boolean;
 };
@@ -304,6 +356,7 @@ export default function QaDirectorPage() {
     setError("");
     try {
       const mission = buildMission();
+      setPhase("discovery");
       const response = await fetch(`${API}/v1/plans/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,13 +367,15 @@ export default function QaDirectorPage() {
         throw new Error(
           typeof payload.detail === "string"
             ? payload.detail
-            : "La misión no cumple el contrato seguro.",
+            : payload.detail?.message ??
+                "La misión no cumple el contrato seguro.",
         );
       }
       setPreview(payload);
       setPhase("preview");
     } catch (caught) {
       setError(errorMessage(caught));
+      setPhase("configure");
     } finally {
       setBusy(false);
     }
@@ -384,6 +439,8 @@ export default function QaDirectorPage() {
       setPreview({
         mission: state.mission,
         plan: state.plan,
+        reconnaissance: null,
+        planning_basis: "mission_inputs",
         missing_executors: [],
         executable: true,
       });
@@ -429,7 +486,11 @@ export default function QaDirectorPage() {
       const response = await fetch(`${API}/v1/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mission: preview.mission, approved: true }),
+        body: JSON.stringify({
+          mission: preview.mission,
+          approved: true,
+          approved_plan_id: preview.plan.plan_id,
+        }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -473,6 +534,22 @@ export default function QaDirectorPage() {
       {},
     );
   }, [run]);
+
+  const reconnaissance = preview?.reconnaissance ?? null;
+  const discoveredTechnologies = Array.from(
+    new Set(
+      (reconnaissance?.project_profile.components ?? []).flatMap(
+        (component) =>
+          [
+            ...component.languages,
+            ...component.frameworks,
+            ...component.runtimes,
+            ...component.package_managers,
+            ...component.test_frameworks,
+          ].map((technology) => technology.name),
+      ),
+    ),
+  ).sort();
 
   const repositoryOutput = recordsByAgent.repository_analyst?.output?.output as
     | {
@@ -650,11 +727,18 @@ export default function QaDirectorPage() {
         <aside className="rail">
           {[
             ["01", "Objetivo", "configure"],
-            ["02", "Plan del enjambre", "preview"],
-            ["03", "Ejecución real", "running"],
-            ["04", "Evidencia", "report"],
+            ["02", "Reconocimiento", "discovery"],
+            ["03", "Plan del enjambre", "preview"],
+            ["04", "Ejecución real", "running"],
+            ["05", "Evidencia", "report"],
           ].map(([number, label, target]) => {
-            const order = ["configure", "preview", "running", "report"];
+            const order = [
+              "configure",
+              "discovery",
+              "preview",
+              "running",
+              "report",
+            ];
             const active = order.indexOf(phase) >= order.indexOf(target as Phase);
             return (
               <div className={`railStep ${active ? "active" : ""}`} key={number}>
@@ -704,7 +788,7 @@ export default function QaDirectorPage() {
                   <span className="eyebrow">CONFIGURAR MISIÓN</span>
                   <h2>¿Qué quieres examinar?</h2>
                 </div>
-                <span className="stepCounter">PASO 1 DE 4</span>
+                <span className="stepCounter">PASO 1 DE 5</span>
               </div>
 
               <div className="sourceGrid">
@@ -924,15 +1008,134 @@ export default function QaDirectorPage() {
             </form>
           )}
 
+          {phase === "discovery" && (
+            <section className="discoveryStage" aria-live="polite">
+              <div className="sectionHeading">
+                <div>
+                  <span className="eyebrow">RECONOCIMIENTO READ-ONLY</span>
+                  <h2>
+                    {hasRepository
+                      ? "Estamos entendiendo el repositorio."
+                      : "Estamos reconociendo la superficie autorizada."}
+                  </h2>
+                </div>
+                <span className="stepCounter">PASO 2 DE 5</span>
+              </div>
+              <div className="scanner">
+                <div className="scannerPulse" />
+                <div>
+                  <strong>
+                    {hasRepository
+                      ? "Repository Analyst está leyendo árbol y manifests"
+                      : "QA Director está validando rutas y restricciones"}
+                  </strong>
+                  <p>
+                    {hasRepository
+                      ? "Detectaremos componentes, lenguajes, frameworks, herramientas de prueba y riesgos antes de seleccionar el equipo definitivo."
+                      : "El plan se construirá con las áreas, rutas y límites que autorizaste."}
+                  </p>
+                </div>
+              </div>
+              <div className="discoveryChecks">
+                <span className="active">01 · Validar alcance</span>
+                <span className={hasRepository ? "active" : ""}>
+                  02 · Detectar stack
+                </span>
+                <span>03 · Construir plan adaptativo</span>
+              </div>
+              <div className="boundaryNotice">
+                No se clona ni ejecuta código. Solo se consultan metadatos, árbol y
+                manifests permitidos mediante la API read-only de GitHub.
+              </div>
+            </section>
+          )}
+
           {phase === "preview" && preview && (
             <section>
               <div className="sectionHeading">
                 <div>
-                  <span className="eyebrow">PLAN TRAZABLE</span>
-                  <h2>Este es el equipo propuesto.</h2>
+                  <span className="eyebrow">PLAN ADAPTADO Y TRAZABLE</span>
+                  <h2>Este es el equipo propuesto para este proyecto.</h2>
                 </div>
                 <button className="textButton" onClick={reset}>EDITAR MISIÓN</button>
               </div>
+              {reconnaissance && (
+                <section className="reconResult">
+                  <div className="reconHeader">
+                    <div>
+                      <span>PROJECT INTELLIGENCE CONFIRMADA</span>
+                      <strong>
+                        {reconnaissance.project_profile.project_type} ·{" "}
+                        {reconnaissance.project_profile.components.length} componente(s)
+                      </strong>
+                    </div>
+                    <div>
+                      <small>CONFIDENCE</small>
+                      <strong>
+                        {Math.round(
+                          reconnaissance.project_profile.overall_confidence * 100,
+                        )}
+                        %
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="reconMetrics">
+                    <span>
+                      <strong>
+                        {reconnaissance.repository_context.snapshot.file_count}
+                      </strong>
+                      archivos observados
+                    </span>
+                    <span>
+                      <strong>
+                        {reconnaissance.repository_context.snapshot.captured_paths.length}
+                      </strong>
+                      manifests capturados
+                    </span>
+                    <span>
+                      <strong>
+                        {reconnaissance.repository_context.snapshot.commit_sha.slice(0, 8)}
+                      </strong>
+                      snapshot aprobado
+                    </span>
+                  </div>
+                  <div className="technologyRow">
+                    {discoveredTechnologies.map((technology) => (
+                      <span key={technology}>{technology}</span>
+                    ))}
+                  </div>
+                  <div className="componentGrid reconComponents">
+                    {reconnaissance.project_profile.components.map((component) => (
+                      <article className="componentCard" key={component.component_id}>
+                        <small>{component.path}</small>
+                        <strong>{component.component_id}</strong>
+                        <span>{component.component_type}</span>
+                        <p>
+                          {[
+                            ...component.languages,
+                            ...component.frameworks,
+                            ...component.test_frameworks,
+                          ]
+                            .map((technology) => technology.name)
+                            .join(" · ")}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                  {!!reconnaissance.project_profile.unknowns.length && (
+                    <p className="reconUnknowns">
+                      Pendiente de confirmar:{" "}
+                      {reconnaissance.project_profile.unknowns.join(" · ")}
+                    </p>
+                  )}
+                </section>
+              )}
+              {!reconnaissance && (
+                <div className="runtimeBasis">
+                  Plan construido desde las rutas, áreas y restricciones autorizadas.
+                  No se proporcionó un repositorio para detectar el stack.
+                </div>
+              )}
               <div className="planSummary">
                 <p>{preview.plan.summary}</p>
                 <div>
@@ -948,7 +1151,11 @@ export default function QaDirectorPage() {
                     <div className="agentAvatar">{agentName(task.agent_id).slice(0, 2).toUpperCase()}</div>
                     <div>
                       <strong>{agentName(task.agent_id)}</strong>
-                      <p>{task.objective}</p>
+                      <p>
+                        {preview.plan.agent_selection_reasons[task.agent_id] ??
+                          task.objective}
+                      </p>
+                      <small className="agentObjective">{task.objective}</small>
                     </div>
                     <span className="status planned">PLANNED</span>
                   </article>

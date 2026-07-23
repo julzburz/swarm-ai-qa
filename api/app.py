@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Secur
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from adapters.github import GitHubApiError
 from orchestrator import (
     AgentRegistry,
     EventStream,
@@ -26,7 +27,11 @@ from schemas.common import QualityDomain, Severity
 from schemas.mission import UserMissionRequestV1
 
 from .config import ApiSettings
-from .controller import MissingExecutorsError, RunController
+from .controller import (
+    MissingExecutorsError,
+    PlanPreviewExpiredError,
+    RunController,
+)
 from .schemas import (
     ArtifactListResponseV1,
     CreateRunRequestV1,
@@ -136,11 +141,28 @@ def create_app(
         dependencies=protected,
     )
     async def preview_plan(mission: UserMissionRequestV1) -> PlanPreviewResponseV1:
-        plan = controller.plan(mission)
+        try:
+            preview = await controller.preview(mission)
+        except GitHubApiError as exc:
+            status_code = (
+                exc.status_code
+                if exc.status_code in {401, 403, 404, 429}
+                else status.HTTP_502_BAD_GATEWAY
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail={
+                    "code": "repository_reconnaissance_failed",
+                    "message": str(exc),
+                },
+            ) from exc
+        plan = preview.plan
         missing = controller.missing_executors(plan)
         return PlanPreviewResponseV1(
             mission=mission,
             plan=plan,
+            reconnaissance=preview.reconnaissance,
+            planning_basis=preview.planning_basis,
             missing_executors=missing,
             executable=not missing,
         )
@@ -164,6 +186,22 @@ def create_app(
                 },
             )
         try:
+            plan = controller.approved_plan(
+                request.mission,
+                request.approved_plan_id,
+            )
+        except PlanPreviewExpiredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "plan_preview_expired",
+                    "message": (
+                        "El reconocimiento aprobado ya no está disponible. "
+                        "Genera nuevamente el plan antes de ejecutar."
+                    ),
+                },
+            ) from exc
+        try:
             run_id = await controller.start(request.mission, plan)
         except MissingExecutorsError as exc:
             raise HTTPException(
@@ -174,6 +212,7 @@ def create_app(
                     "agent_ids": exc.agent_ids,
                 },
             ) from exc
+        controller.discard_preview(request.mission.mission_id)
         base = f"/v1/runs/{run_id}"
         return RunAcceptedResponseV1(
             run_id=run_id,

@@ -7,6 +7,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -142,6 +143,30 @@ class ControlPlaneApiTests(unittest.TestCase):
         detail = response.json()["detail"]
         self.assertEqual(detail["code"], "missing_executors")
         self.assertIn("security_test_engineer", detail["agent_ids"])
+
+    def test_run_rejects_an_approved_plan_id_that_was_not_previewed(self) -> None:
+        mission = api_mission()
+        app = create_app(store=self.store, registry=registry_for(mission))
+        with TestClient(app) as client:
+            preview = client.post(
+                "/v1/plans/preview",
+                json=mission.model_dump(mode="json"),
+            )
+            self.assertEqual(preview.status_code, 200)
+            response = client.post(
+                "/v1/runs",
+                json={
+                    "mission": mission.model_dump(mode="json"),
+                    "approved": True,
+                    "approved_plan_id": str(uuid4()),
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()["detail"]["code"],
+            "plan_preview_expired",
+        )
 
     def test_run_state_event_history_and_terminal_sse(self) -> None:
         mission = api_mission()

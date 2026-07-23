@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
+import time
+from typing import Literal
 from uuid import UUID, uuid4
 
+from executors.models import RepositoryAnalysisOutputV1
+from executors.repository import RepositoryAnalystExecutor
 from orchestrator import AgentRegistry, RuleBasedQaDirector, SwarmOrchestrator
 from orchestrator.models import RunStateV1
 from schemas.mission import SwarmExecutionPlanV1, UserMissionRequestV1
@@ -14,6 +19,21 @@ class MissingExecutorsError(RuntimeError):
         super().__init__(f"Missing agent executors: {agent_ids}")
 
 
+class PlanPreviewExpiredError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class AdaptivePlanPreview:
+    plan: SwarmExecutionPlanV1
+    reconnaissance: RepositoryAnalysisOutputV1 | None
+    planning_basis: Literal[
+        "repository_reconnaissance",
+        "runtime_inputs",
+        "mission_inputs",
+    ]
+
+
 class RunController:
     """Owns in-process run tasks while durable state remains in RunStore."""
 
@@ -22,14 +42,96 @@ class RunController:
         orchestrator: SwarmOrchestrator,
         registry: AgentRegistry,
         director: RuleBasedQaDirector | None = None,
+        preview_ttl_seconds: float = 600.0,
     ) -> None:
+        if preview_ttl_seconds <= 0:
+            raise ValueError("preview_ttl_seconds must be positive")
         self.orchestrator = orchestrator
         self.registry = registry
         self.director = director or RuleBasedQaDirector()
+        self.preview_ttl_seconds = preview_ttl_seconds
         self._tasks: dict[UUID, asyncio.Task[RunStateV1]] = {}
+        self._previews: dict[
+            UUID,
+            tuple[float, UserMissionRequestV1, AdaptivePlanPreview],
+        ] = {}
 
     def plan(self, mission: UserMissionRequestV1) -> SwarmExecutionPlanV1:
         return self.director.build_plan(mission)
+
+    async def preview(self, mission: UserMissionRequestV1) -> AdaptivePlanPreview:
+        reconnaissance: RepositoryAnalysisOutputV1 | None = None
+        basis: Literal[
+            "repository_reconnaissance",
+            "runtime_inputs",
+            "mission_inputs",
+        ] = "runtime_inputs" if mission.runtime_target is not None else "mission_inputs"
+
+        if (
+            mission.repository_target is not None
+            and self.registry.contains("repository_analyst")
+        ):
+            executor = self.registry.get("repository_analyst")
+            if isinstance(executor, RepositoryAnalystExecutor):
+                reconnaissance = await executor.inspect_target(
+                    mission.repository_target,
+                    mission.pull_request_number,
+                )
+                basis = "repository_reconnaissance"
+
+        plan = self.director.build_plan(
+            mission,
+            project_profile=(
+                reconnaissance.project_profile
+                if reconnaissance is not None
+                else None
+            ),
+            change_impact=(
+                reconnaissance.change_impact
+                if reconnaissance is not None
+                else None
+            ),
+        )
+        preview = AdaptivePlanPreview(
+            plan=plan,
+            reconnaissance=reconnaissance,
+            planning_basis=basis,
+        )
+        self._previews[mission.mission_id] = (
+            time.monotonic(),
+            mission.model_copy(deep=True),
+            preview,
+        )
+        while len(self._previews) > 128:
+            self._previews.pop(next(iter(self._previews)))
+        return preview
+
+    def approved_plan(
+        self,
+        mission: UserMissionRequestV1,
+        approved_plan_id: UUID | None = None,
+    ) -> SwarmExecutionPlanV1:
+        cached = self._previews.get(mission.mission_id)
+        if cached is not None:
+            cached_at, cached_mission, preview = cached
+            if (
+                time.monotonic() - cached_at <= self.preview_ttl_seconds
+                and cached_mission == mission
+                and (
+                    approved_plan_id is None
+                    or preview.plan.plan_id == approved_plan_id
+                )
+            ):
+                return preview.plan
+            self._previews.pop(mission.mission_id, None)
+        if approved_plan_id is not None:
+            raise PlanPreviewExpiredError(
+                "The approved adaptive plan is unavailable or no longer matches the mission"
+            )
+        return self.plan(mission)
+
+    def discard_preview(self, mission_id: UUID) -> None:
+        self._previews.pop(mission_id, None)
 
     def missing_executors(self, plan: SwarmExecutionPlanV1) -> list[str]:
         return sorted(plan.selected_agents - self.registry.agent_ids)
@@ -69,6 +171,7 @@ class RunController:
         active_tasks = [task for task in self._tasks.values() if not task.done()]
         if active_tasks:
             await asyncio.gather(*active_tasks, return_exceptions=True)
+        self._previews.clear()
 
     def _on_done(self, run_id: UUID, task: asyncio.Task[RunStateV1]) -> None:
         self._tasks.pop(run_id, None)

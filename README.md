@@ -64,7 +64,8 @@ addresses.
 
 ## Working capabilities
 
-- FastAPI control plane with plan preview, approval, cancellation, durable checkpoints and SSE.
+- FastAPI control plane with read-only repository reconnaissance, adaptive plan preview,
+  plan-bound approval, cancellation, durable checkpoints and SSE.
 - Filterable persisted findings plus integrity-checked artifact catalog and downloads.
 - Public GitHub repository and optional pull-request inspection using bounded REST `GET` requests.
 - Canonical repository validation and explicit private-repository server allowlist.

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import Field
 
+from executors.models import RepositoryAnalysisOutputV1
 from schemas.common import QualityDomain, Severity, StrictModel
 from schemas.evidence import CorrelatedFindingV1
 from schemas.mission import MissionMode, SwarmExecutionPlanV1, UserMissionRequestV1
@@ -23,6 +24,12 @@ class HealthResponseV1(StrictModel):
 class PlanPreviewResponseV1(StrictModel):
     mission: UserMissionRequestV1
     plan: SwarmExecutionPlanV1
+    reconnaissance: RepositoryAnalysisOutputV1 | None = None
+    planning_basis: Literal[
+        "repository_reconnaissance",
+        "runtime_inputs",
+        "mission_inputs",
+    ] = "mission_inputs"
     missing_executors: list[str]
     executable: bool
 
@@ -30,6 +37,7 @@ class PlanPreviewResponseV1(StrictModel):
 class CreateRunRequestV1(StrictModel):
     mission: UserMissionRequestV1
     approved: bool = False
+    approved_plan_id: UUID | None = None
 
 
 class RunAcceptedResponseV1(StrictModel):
