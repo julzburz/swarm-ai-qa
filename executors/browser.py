@@ -6,10 +6,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from orchestrator.ports import AgentExecutionContextV1
-from schemas.common import EvidenceRefV1, QualityDomain, Severity, ToolExecutionStatus
+from schemas.common import (
+    Environment,
+    EvidenceRefV1,
+    QualityDomain,
+    Severity,
+    ToolExecutionStatus,
+)
 from schemas.evidence import AgentOutputEnvelopeV1, FindingV1, ToolExecutionResultV1
 from schemas.execution import JourneyResultV1, JourneyStepResultV1, RuntimeObservationV1, SpecialistTaskV1
-from schemas.specialists import BrowserAgentOutputV1
+from schemas.specialists import (
+    BrowserAgentOutputV1,
+    BrowserInteractionCoverageV1,
+)
 from workers.browser import BrowserWorker, BrowserWorkerRequestV1
 
 from .models import TestArchitectureOutputV1
@@ -58,6 +67,11 @@ class BrowserAutomationExecutor:
                 f"test plan selected paths outside the runtime allowlist: "
                 f"{sorted(unauthorized_paths)}"
             )
+        safe_interactions = (
+            target.allow_form_submission
+            and target.environment
+            in {Environment.STAGING, Environment.SANDBOX}
+        )
         started_at = datetime.now(timezone.utc)
         started_clock = time.monotonic()
         result = await self.worker.run(
@@ -67,6 +81,13 @@ class BrowserAutomationExecutor:
                 base_url=target.base_url,
                 allowed_paths=planned_paths,
                 blocked_paths=target.blocked_paths,
+                interaction_mode=(
+                    "safe_staging"
+                    if safe_interactions
+                    else "navigation_only"
+                ),
+                allow_get_form_submission=safe_interactions,
+                max_interactions_per_path=3 if safe_interactions else 0,
                 max_requests=min(100, context.mission.budget.max_requests),
                 timeout_seconds=min(task.timeout_seconds, context.mission.budget.max_duration_seconds),
             )
@@ -93,7 +114,30 @@ class BrowserAutomationExecutor:
                 f"Navigation to {capture.final_url} returned HTTP {capture.http_status}; "
                 f"console_errors={len(capture.console_errors)}, "
                 f"page_errors={len(capture.page_errors)}, "
-                f"request_failures={len(capture.request_failures)}."
+                f"request_failures={len(capture.request_failures)}, "
+                f"safe_interactions={len(capture.interaction_steps)}."
+            )
+            journey_steps = [
+                JourneyStepResultV1(
+                    step=f"Open {capture.path}",
+                    status=capture.status,
+                    observation=observation_text,
+                    duration_ms=capture.duration_ms,
+                    evidence_refs=evidence,
+                )
+            ]
+            journey_steps.extend(
+                JourneyStepResultV1(
+                    step=(
+                        f"{interaction.action}: "
+                        f"{interaction.target}"
+                    ),
+                    status=interaction.status,
+                    observation=interaction.observation,
+                    duration_ms=interaction.duration_ms,
+                    evidence_refs=evidence,
+                )
+                for interaction in capture.interaction_steps
             )
             journeys.append(
                 JourneyResultV1(
@@ -101,15 +145,7 @@ class BrowserAutomationExecutor:
                     task_id=task.task_id,
                     name=capture.name,
                     status=capture.status,
-                    steps=[
-                        JourneyStepResultV1(
-                            step=f"Open {capture.path}",
-                            status=capture.status,
-                            observation=observation_text,
-                            duration_ms=capture.duration_ms,
-                            evidence_refs=evidence,
-                        )
-                    ],
+                    steps=journey_steps,
                     environment_url=capture.final_url,
                     evidence_refs=evidence,
                     confidence=0.95 if capture.http_status is not None else 0.7,
@@ -164,6 +200,22 @@ class BrowserAutomationExecutor:
                     sensitive_values_redacted=True,
                 )
             )
+        if result.blocked_interactions:
+            observations.append(
+                RuntimeObservationV1(
+                    task_id=task.task_id,
+                    source="dom",
+                    observation=(
+                        "La política Browser omitió o bloqueó "
+                        f"{len(result.blocked_interactions)} interacción(es) "
+                        "potencialmente sensibles: "
+                        + ", ".join(result.blocked_interactions[:10])
+                    ),
+                    confidence=1.0,
+                    evidence_refs=[trace_ref],
+                    sensitive_values_redacted=True,
+                )
+            )
 
         artifact_refs = _unique_evidence(artifact_refs)
         tool_execution = ToolExecutionResultV1(
@@ -179,8 +231,31 @@ class BrowserAutomationExecutor:
             artifact_refs=artifact_refs,
             output_summary=(
                 f"Executed {len(journeys)} journey(s), observed {result.request_count} request(s), "
-                f"blocked {len(result.blocked_requests)}."
+                f"blocked {len(result.blocked_requests)} request(s) and "
+                f"{len(result.blocked_interactions)} unsafe interaction(s)."
             ),
+        )
+        interaction_steps = [
+            step
+            for capture in result.journeys
+            for step in capture.interaction_steps
+            if step.status == "passed"
+        ]
+        interaction_coverage = BrowserInteractionCoverageV1(
+            mode=result.interaction_mode,
+            safe_links_clicked=sum(
+                step.action == "click_safe_link"
+                for step in interaction_steps
+            ),
+            safe_fields_filled=sum(
+                step.action == "fill_safe_field"
+                for step in interaction_steps
+            ),
+            safe_get_forms_submitted=sum(
+                step.action == "submit_safe_get_form"
+                for step in interaction_steps
+            ),
+            blocked_interactions=len(result.blocked_interactions),
         )
         output = BrowserAgentOutputV1(
             run_id=context.run_id,
@@ -188,6 +263,7 @@ class BrowserAutomationExecutor:
             journeys=journeys,
             observations=observations,
             findings=findings,
+            interaction_coverage=interaction_coverage,
             tool_executions=[tool_execution],
         )
         return AgentOutputEnvelopeV1(

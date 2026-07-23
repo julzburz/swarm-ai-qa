@@ -150,9 +150,14 @@ class RuntimeTargetV1(StrictModel):
                 "reserved or metadata addresses"
             )
         if self.environment == Environment.PRODUCTION and (
-            self.allow_load_testing or self.allow_chaos_testing
+            self.allow_form_submission
+            or self.allow_load_testing
+            or self.allow_chaos_testing
         ):
-            raise ValueError("Production targets cannot enable load or chaos testing")
+            raise ValueError(
+                "Production targets cannot enable form submission, load or "
+                "chaos testing"
+            )
         return self
 
 

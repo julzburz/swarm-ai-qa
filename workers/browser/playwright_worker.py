@@ -8,11 +8,33 @@ import time
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
-from playwright.async_api import Request, Route, async_playwright
+from playwright.async_api import (
+    Request,
+    Route,
+    TimeoutError as PlaywrightTimeoutError,
+    async_playwright,
+)
 
 from schemas.common import is_forbidden_network_host
 
-from .models import BrowserJourneyCaptureV1, BrowserWorkerRequestV1, BrowserWorkerResultV1
+from .models import (
+    BrowserInteractionStepCaptureV1,
+    BrowserJourneyCaptureV1,
+    BrowserWorkerRequestV1,
+    BrowserWorkerResultV1,
+)
+
+
+SENSITIVE_ACTION_PATTERN = re.compile(
+    r"(?i)\b(delete|remove|destroy|purchase|buy|pay|checkout|place\s+order|"
+    r"log\s*out|logout|sign\s*out|unsubscribe|cancel\s+account|admin|"
+    r"transfer|withdraw|send\s+money|confirm)\b"
+)
+SENSITIVE_FIELD_PATTERN = re.compile(
+    r"(?i)\b(password|passcode|credential|token|secret|csrf|session|card|"
+    r"cvv|cvc|iban|account|ssn|social|document|dni)\b"
+)
+SAFE_INPUT_TYPES = {"text", "search", "email", "tel", "url", "number"}
 
 
 class PlaywrightBrowserWorker:
@@ -33,6 +55,7 @@ class PlaywrightBrowserWorker:
         trace_path = task_dir / "trace.zip"
         request_count = 0
         blocked_requests: list[str] = []
+        blocked_interactions: list[str] = []
         captures: list[BrowserJourneyCaptureV1] = []
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=self.headless)
@@ -101,6 +124,16 @@ class PlaywrightBrowserWorker:
                             console_errors,
                             page_errors,
                             request_failures,
+                            interaction_mode=request.interaction_mode,
+                            allow_get_form_submission=(
+                                request.allow_get_form_submission
+                            ),
+                            max_interactions=(
+                                request.max_interactions_per_path
+                            ),
+                            allowed_paths=request.allowed_paths,
+                            blocked_paths=request.blocked_paths,
+                            blocked_interactions=blocked_interactions,
                         )
                     )
             finally:
@@ -113,6 +146,8 @@ class PlaywrightBrowserWorker:
             trace_path=str(trace_path.resolve()),
             request_count=request_count,
             blocked_requests=sorted(set(blocked_requests)),
+            blocked_interactions=sorted(set(blocked_interactions)),
+            interaction_mode=request.interaction_mode,
             playwright_version=importlib.metadata.version("playwright"),
             browser_version=browser_version,
         )
@@ -126,6 +161,13 @@ class PlaywrightBrowserWorker:
         console_errors: list[str],
         page_errors: list[str],
         request_failures: list[str],
+        *,
+        interaction_mode: str,
+        allow_get_form_submission: bool,
+        max_interactions: int,
+        allowed_paths: list[str],
+        blocked_paths: list[str],
+        blocked_interactions: list[str],
     ) -> BrowserJourneyCaptureV1:
         started = time.monotonic()
         console_start = len(console_errors)
@@ -136,6 +178,7 @@ class PlaywrightBrowserWorker:
         status = "passed"
         title = ""
         final_url = target
+        interaction_steps: list[BrowserInteractionStepCaptureV1] = []
         try:
             response = await page.goto(target, wait_until="load")
             http_status = response.status if response is not None else None
@@ -145,6 +188,28 @@ class PlaywrightBrowserWorker:
                 status = "failed"
             if len(page_errors) > page_error_start:
                 status = "failed"
+            if (
+                status == "passed"
+                and interaction_mode == "safe_staging"
+                and max_interactions > 0
+            ):
+                interaction_steps = await _run_safe_interactions(
+                    page,
+                    target,
+                    base_url,
+                    allowed_paths,
+                    blocked_paths,
+                    allow_get_form_submission=allow_get_form_submission,
+                    max_interactions=max_interactions,
+                    blocked_interactions=blocked_interactions,
+                )
+                final_url = page.url
+                title = await page.title()
+                if any(
+                    step.status == "failed"
+                    for step in interaction_steps
+                ):
+                    status = "failed"
         except Exception as exc:  # Playwright boundary
             status = "blocked" if "ERR_BLOCKED_BY_CLIENT" in str(exc) else "failed"
             page_errors.append(_redact_text(f"{type(exc).__name__}: {exc}"))
@@ -168,7 +233,365 @@ class PlaywrightBrowserWorker:
             console_errors=console_errors[console_start:],
             page_errors=page_errors[page_error_start:],
             request_failures=request_failures[failure_start:],
+            interaction_steps=interaction_steps,
         )
+
+
+async def _run_safe_interactions(
+    page,
+    initial_url: str,
+    base_url: str,
+    allowed_paths: list[str],
+    blocked_paths: list[str],
+    *,
+    allow_get_form_submission: bool,
+    max_interactions: int,
+    blocked_interactions: list[str],
+) -> list[BrowserInteractionStepCaptureV1]:
+    steps: list[BrowserInteractionStepCaptureV1] = []
+    action_count = 0
+    link = await _find_safe_link(
+        page,
+        base_url,
+        allowed_paths,
+        blocked_paths,
+        blocked_interactions,
+    )
+    if link is not None and action_count < max_interactions:
+        locator, destination, label = link
+        started = time.monotonic()
+        try:
+            await locator.click()
+            try:
+                await page.wait_for_load_state("domcontentloaded")
+            except PlaywrightTimeoutError:
+                pass
+            final_url = page.url
+            destination_allowed = url_is_allowed(
+                final_url,
+                base_url,
+                allowed_paths,
+                blocked_paths,
+            )
+            status = "passed" if destination_allowed else "blocked"
+            observation = (
+                "El enlace interno autorizado respondió y permaneció dentro "
+                "del origen y rutas permitidas."
+                if destination_allowed
+                else "La interacción intentó salir del destino autorizado."
+            )
+        except Exception as exc:
+            status = (
+                "blocked"
+                if "ERR_BLOCKED_BY_CLIENT" in str(exc)
+                else "failed"
+            )
+            final_url = page.url or initial_url
+            observation = _redact_text(
+                f"{type(exc).__name__}: {exc}"
+            )
+        steps.append(
+            BrowserInteractionStepCaptureV1(
+                action="click_safe_link",
+                status=status,
+                target=label,
+                observation=observation,
+                final_url=_safe_url(final_url),
+                duration_ms=max(
+                    0,
+                    round((time.monotonic() - started) * 1000),
+                ),
+            )
+        )
+        action_count += 1
+        if status == "passed":
+            steps.append(
+                BrowserInteractionStepCaptureV1(
+                    action="assert_safe_destination",
+                    status="passed",
+                    target=_safe_url(destination),
+                    observation=(
+                        "La navegación resultante coincide con un destino "
+                        "same-origin incluido en el allowlist."
+                    ),
+                    final_url=_safe_url(page.url),
+                    duration_ms=0,
+                )
+            )
+        try:
+            await page.goto(initial_url, wait_until="load")
+        except Exception as exc:
+            steps.append(
+                BrowserInteractionStepCaptureV1(
+                    action="assert_safe_destination",
+                    status="failed",
+                    target=_safe_url(initial_url),
+                    observation=_redact_text(
+                        f"No se pudo restaurar la ruta inicial: {exc}"
+                    ),
+                    final_url=_safe_url(page.url or initial_url),
+                    duration_ms=0,
+                )
+            )
+            return steps
+
+    if (
+        allow_get_form_submission
+        and action_count < max_interactions
+    ):
+        form = await _find_safe_get_form(
+            page,
+            base_url,
+            allowed_paths,
+            blocked_paths,
+            blocked_interactions,
+        )
+        if form is not None:
+            form_locator, _, form_label = form
+            inputs = form_locator.locator("input[name], textarea[name]")
+            input_count = min(await inputs.count(), 20)
+            filled = 0
+            for index in range(input_count):
+                if action_count >= max_interactions - 1:
+                    break
+                field = inputs.nth(index)
+                field_type = (
+                    (await field.get_attribute("type")) or "text"
+                ).lower()
+                name = (
+                    (await field.get_attribute("name"))
+                    or (await field.get_attribute("aria-label"))
+                    or f"field-{index + 1}"
+                )
+                if (
+                    field_type not in SAFE_INPUT_TYPES
+                    or SENSITIVE_FIELD_PATTERN.search(name)
+                    or not await field.is_visible()
+                    or not await field.is_enabled()
+                ):
+                    if SENSITIVE_FIELD_PATTERN.search(name):
+                        blocked_interactions.append(
+                            f"field:{_redact_text(name)[:80]}"
+                        )
+                    continue
+                started = time.monotonic()
+                try:
+                    await field.fill(_synthetic_value(field_type))
+                    status = "passed"
+                    observation = (
+                        "Campo seguro completado con un valor sintético; "
+                        "no se utilizaron datos personales ni secretos."
+                    )
+                    filled += 1
+                except Exception as exc:
+                    status = "failed"
+                    observation = _redact_text(
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                steps.append(
+                    BrowserInteractionStepCaptureV1(
+                        action="fill_safe_field",
+                        status=status,
+                        target=_redact_text(name)[:120],
+                        observation=observation,
+                        final_url=_safe_url(page.url),
+                        duration_ms=max(
+                            0,
+                            round((time.monotonic() - started) * 1000),
+                        ),
+                    )
+                )
+                action_count += 1
+
+            if filled and action_count < max_interactions:
+                started = time.monotonic()
+                try:
+                    await form_locator.evaluate(
+                        "(form) => form.requestSubmit()"
+                    )
+                    try:
+                        await page.wait_for_load_state("domcontentloaded")
+                    except PlaywrightTimeoutError:
+                        pass
+                    destination_allowed = url_is_allowed(
+                        page.url,
+                        base_url,
+                        allowed_paths,
+                        blocked_paths,
+                    )
+                    status = (
+                        "passed" if destination_allowed else "blocked"
+                    )
+                    observation = (
+                        "Formulario GET autorizado enviado con datos "
+                        "sintéticos y destino permitido."
+                        if destination_allowed
+                        else "El formulario intentó salir del destino autorizado."
+                    )
+                except Exception as exc:
+                    status = (
+                        "blocked"
+                        if "ERR_BLOCKED_BY_CLIENT" in str(exc)
+                        else "failed"
+                    )
+                    observation = _redact_text(
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                steps.append(
+                    BrowserInteractionStepCaptureV1(
+                        action="submit_safe_get_form",
+                        status=status,
+                        target=form_label,
+                        observation=observation,
+                        final_url=_safe_url(page.url),
+                        duration_ms=max(
+                            0,
+                            round((time.monotonic() - started) * 1000),
+                        ),
+                    )
+                )
+    return steps
+
+
+async def _find_safe_link(
+    page,
+    base_url: str,
+    allowed_paths: list[str],
+    blocked_paths: list[str],
+    blocked_interactions: list[str],
+):
+    links = page.locator("a[href]")
+    selected = None
+    for index in range(min(await links.count(), 50)):
+        link = links.nth(index)
+        href = await link.get_attribute("href")
+        if not href or await link.get_attribute("download") is not None:
+            continue
+        if (await link.get_attribute("target") or "").lower() == "_blank":
+            continue
+        destination = urljoin(page.url, href)
+        label = _redact_text(
+            ((await link.inner_text()) or href).strip()
+        )[:120]
+        descriptor = f"{label} {_safe_url(destination)}"
+        if SENSITIVE_ACTION_PATTERN.search(descriptor):
+            blocked_interactions.append(
+                f"link:{_safe_url(destination)}"
+            )
+            continue
+        if not url_is_allowed(
+            destination,
+            base_url,
+            allowed_paths,
+            blocked_paths,
+        ):
+            blocked_interactions.append(
+                f"link:{_safe_url(destination)}"
+            )
+            continue
+        if _safe_url(destination) == _safe_url(page.url):
+            continue
+        if selected is None:
+            selected = (link, destination, label)
+    return selected
+
+
+async def _find_safe_get_form(
+    page,
+    base_url: str,
+    allowed_paths: list[str],
+    blocked_paths: list[str],
+    blocked_interactions: list[str],
+):
+    forms = page.locator("form")
+    selected = None
+    for index in range(min(await forms.count(), 20)):
+        form = forms.nth(index)
+        method = ((await form.get_attribute("method")) or "get").lower()
+        action = await form.get_attribute("action") or page.url
+        action_url = urljoin(page.url, action)
+        label = _redact_text(
+            ((await form.inner_text()) or "GET form").strip()
+        )[:120]
+        descriptor = f"{label} {_safe_url(action_url)}"
+        if method != "get":
+            blocked_interactions.append(
+                f"form:{method.upper()}:{_safe_url(action_url)}"
+            )
+            continue
+        if await _form_has_sensitive_controls(form):
+            blocked_interactions.append(
+                f"form:sensitive:{_safe_url(action_url)}"
+            )
+            continue
+        if SENSITIVE_ACTION_PATTERN.search(descriptor):
+            blocked_interactions.append(
+                f"form:GET:{_safe_url(action_url)}"
+            )
+            continue
+        if not url_is_allowed(
+            action_url,
+            base_url,
+            allowed_paths,
+            blocked_paths,
+        ):
+            blocked_interactions.append(
+                f"form:GET:{_safe_url(action_url)}"
+            )
+            continue
+        if selected is None:
+            selected = (
+                form,
+                action_url,
+                label or _safe_url(action_url),
+            )
+    return selected
+
+
+async def _form_has_sensitive_controls(form) -> bool:
+    controls = form.locator("input, textarea, select, button")
+    for index in range(min(await controls.count(), 50)):
+        control = controls.nth(index)
+        control_type = (
+            (await control.get_attribute("type")) or ""
+        ).lower()
+        descriptor = " ".join(
+            filter(
+                None,
+                [
+                    await control.get_attribute("name"),
+                    await control.get_attribute("id"),
+                    await control.get_attribute("aria-label"),
+                    await control.get_attribute("placeholder"),
+                    await control.get_attribute("formaction"),
+                    (await control.inner_text()).strip(),
+                ],
+            )
+        )
+        if (
+            control_type in {"password", "file"}
+            or SENSITIVE_FIELD_PATTERN.search(descriptor)
+            or SENSITIVE_ACTION_PATTERN.search(descriptor)
+        ):
+            return True
+        if control_type == "hidden" and await control.get_attribute("value"):
+            return True
+        form_method = (
+            await control.get_attribute("formmethod")
+        )
+        if form_method and form_method.lower() != "get":
+            return True
+    return False
+
+
+def _synthetic_value(field_type: str) -> str:
+    return {
+        "email": "qa.synthetic@example.invalid",
+        "tel": "000000000",
+        "url": "https://example.invalid",
+        "number": "1",
+        "search": "swarm qa safe test",
+    }.get(field_type, "swarm qa synthetic value")
 
 
 def url_is_allowed(

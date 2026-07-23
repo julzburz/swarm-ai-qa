@@ -17,7 +17,7 @@ class ApiSettings:
     storage_backend: Literal["sqlite", "neon"] = "sqlite"
     api_key: str | None = field(default=None, repr=False)
     title: str = "Swarm AI QA Control Plane"
-    version: str = "0.8.0"
+    version: str = "0.9.0"
 
     @classmethod
     def from_env(

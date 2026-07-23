@@ -509,6 +509,46 @@ button {
   background: #f1f0eb;
 }
 
+.safeFlowToggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--ink);
+  background: #f8f7f1;
+  cursor: pointer;
+}
+
+.safeFlowToggle input {
+  margin-top: 2px;
+  accent-color: var(--signal-dark);
+}
+
+.safeFlowToggle span,
+.safeFlowToggle strong,
+.safeFlowToggle small {
+  display: block;
+}
+
+.safeFlowToggle strong {
+  font: 800 9px var(--font-geist-mono), monospace;
+  letter-spacing: 0.08em;
+}
+
+.safeFlowToggle small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.safeFlowToggle.disabled {
+  color: #8f9591;
+  border-color: var(--line);
+  background: #efeee9;
+  cursor: not-allowed;
+}
+
 .actionRow {
   display: flex;
   align-items: center;
