@@ -197,19 +197,35 @@ class ApiTaskV1(SpecialistTaskBaseV1):
 
 class ApiOperationResultV1(StrictModel):
     operation_id: NonEmptyStr
+    method: Literal["GET", "HEAD"]
+    path: NonEmptyStr
+    source: Literal["openapi", "observed_get"]
+    url: NonEmptyStr
     status: Literal["passed", "failed", "blocked"]
     status_code: int | None = Field(default=None, ge=100, le=599)
     latency_ms: int | None = Field(default=None, ge=0)
+    expected_statuses: list[NonEmptyStr] = Field(default_factory=list)
     schema_valid: bool | None = None
     observation: NonEmptyStr
     evidence_refs: list[EvidenceRefV1] = Field(min_length=1)
 
 
 class ContractCoverageV1(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    contract_discovered: bool
+    contract_valid: bool | None = None
+    contract_source_url: NonEmptyStr | None = None
+    contract_title: str = ""
+    contract_version: str = ""
+    openapi_version: str = ""
     total_operations: int = Field(ge=0)
     assigned_operations: int = Field(ge=0)
     executed_operations: int = Field(ge=0)
+    safe_operations: int = Field(ge=0)
+    response_schemas_validated: int = Field(ge=0)
+    mutating_operations_blocked: int = Field(ge=0)
     blocked_operations: list[NonEmptyStr] = Field(default_factory=list)
+    unsafe_requests_performed: Literal[False] = False
 
     @model_validator(mode="after")
     def operation_counts_are_consistent(self) -> "ContractCoverageV1":
@@ -226,6 +242,7 @@ class ApiAgentOutputV1(StrictModel):
     findings: list[FindingV1] = Field(default_factory=list)
     coverage: ContractCoverageV1
     tool_executions: list[ToolExecutionResultV1] = Field(min_length=1)
+    residual_risks: list[NonEmptyStr] = Field(default_factory=list)
 
 
 class ToolHealthSnapshotV1(StrictModel):

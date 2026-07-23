@@ -8,6 +8,7 @@ import yaml
 from schemas.execution import TestCaseDesignV1
 from schemas.specialists import (
     AccessibilityAgentOutputV1,
+    ApiAgentOutputV1,
     BrowserAgentOutputV1,
     PerformanceAgentOutputV1,
     SecurityAgentOutputV1,
@@ -64,6 +65,13 @@ class ReadOnlyProductPolicyTests(unittest.TestCase):
         self.assertNotIn("generated_tests", fields)
         self.assertNotIn("patch", fields)
         self.assertNotIn("source_code", fields)
+
+    def test_api_output_cannot_return_generated_code_or_bodies(self) -> None:
+        fields = set(ApiAgentOutputV1.model_fields)
+        self.assertNotIn("generated_tests", fields)
+        self.assertNotIn("patch", fields)
+        self.assertNotIn("source_code", fields)
+        self.assertNotIn("response_bodies", fields)
 
     def test_designed_cases_are_documentation_not_test_code(self) -> None:
         fields = set(TestCaseDesignV1.model_fields)

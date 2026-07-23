@@ -8,6 +8,6 @@ from .app import create_app
 
 
 def create_automation_app() -> FastAPI:
-    """Factory with GitHub read-only and Playwright navigation executors."""
+    """Factory with the implemented read-only QA specialist executors."""
 
     return create_app(registry=build_automation_registry())

@@ -78,8 +78,8 @@ aun faltan.
 
 ## GitHub + Playwright + axe automation
 
-La factory compuesta agrega Browser Automation Engineer, Accessibility Specialist, Security
-Test Engineer y Performance Test Engineer para misiones runtime:
+La factory compuesta agrega Browser Automation Engineer, API Test Engineer, Accessibility
+Specialist, Security Test Engineer y Performance Test Engineer para misiones runtime:
 
 ```powershell
 python -m playwright install chromium
@@ -98,6 +98,12 @@ hacer hasta tres interacciones por ruta, limitadas a enlaces internos autorizado
 GET con valores sinteticos. Omite campos sensibles, POST y otros metodos mutantes, logout,
 compras, pagos y acciones destructivas. Produccion rechaza este opt-in desde el contrato de
 mision y permanece en navegacion pasiva.
+
+API Test Engineer descubre `openapi.json` o `swagger.json` solo cuando esas ubicaciones pertenecen
+al allowlist. Valida estructura OpenAPI, status documentados y schemas JSON de operaciones
+parametro-free `GET/HEAD`. Los metodos mutantes, parametros obligatorios, redirects externos y
+respuestas que exceden el presupuesto quedan bloqueados. No usa credenciales ni conserva valores
+del body: el artifact contiene metadata del contrato y resultados de validacion redactados.
 
 Accessibility ejecuta axe-core sobre las mismas rutas permitidas y conserva un JSON redactado
 con versión, reglas, selectores y resultados. Reporting correlaciona cada finding axe con la

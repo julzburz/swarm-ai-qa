@@ -31,6 +31,10 @@ LOCAL_ARTIFACT_LAYOUT = {
         "directory": "performance",
         "kinds": {"smoke"},
     },
+    "api": {
+        "directory": "api",
+        "kinds": {"contract"},
+    },
 }
 
 

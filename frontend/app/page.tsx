@@ -7,6 +7,7 @@ type DepthMode = "quick" | "examination";
 type Domain =
   | "repository"
   | "functional"
+  | "api"
   | "accessibility"
   | "security"
   | "performance";
@@ -136,6 +137,7 @@ const AGENT_NAMES: Record<string, string> = {
   repository_analyst: "Repository Analyst",
   test_architect: "Test Architect",
   browser_automation_engineer: "Browser Automation",
+  api_test_engineer: "API Test Engineer",
   evidence_reporting_analyst: "Evidence & Reporting",
   accessibility_specialist: "Accessibility Specialist",
   security_test_engineer: "Security Test Engineer",
@@ -190,6 +192,7 @@ export default function QaDirectorPage() {
   const [interactiveFlows, setInteractiveFlows] = useState(false);
   const [repositoryDomain, setRepositoryDomain] = useState(true);
   const [functionalDomain, setFunctionalDomain] = useState(true);
+  const [apiDomain, setApiDomain] = useState(true);
   const [accessibilityDomain, setAccessibilityDomain] = useState(true);
   const [securityDomain, setSecurityDomain] = useState(true);
   const [performanceDomain, setPerformanceDomain] = useState(true);
@@ -215,6 +218,7 @@ export default function QaDirectorPage() {
     const domains: Domain[] = [];
     if (hasRepository && repositoryDomain) domains.push("repository");
     if (hasRuntime && functionalDomain) domains.push("functional");
+    if (hasRuntime && apiDomain) domains.push("api");
     if (hasRuntime && accessibilityDomain) domains.push("accessibility");
     if (hasRuntime && securityDomain) domains.push("security");
     if (hasRuntime && performanceDomain) domains.push("performance");
@@ -224,6 +228,7 @@ export default function QaDirectorPage() {
     hasRuntime,
     repositoryDomain,
     functionalDomain,
+    apiDomain,
     accessibilityDomain,
     securityDomain,
     performanceDomain,
@@ -282,6 +287,8 @@ export default function QaDirectorPage() {
             ? "Detectar barreras WCAG automatizables con axe"
             : domain === "performance"
             ? "Medir señales de rendimiento en laboratorio sin generar carga"
+            : domain === "api"
+            ? "Descubrir OpenAPI y validar operaciones GET/HEAD seguras"
             : "Verificar los journeys aprobados en el navegador",
         domains: [domain],
       }));
@@ -500,6 +507,33 @@ export default function QaDirectorPage() {
           mutating_requests_allowed: false;
           destructive_actions_executed: false;
         };
+      }
+    | undefined;
+  const apiOutput = recordsByAgent.api_test_engineer?.output?.output as
+    | {
+        coverage?: {
+          contract_discovered: boolean;
+          contract_valid?: boolean;
+          contract_title: string;
+          contract_version: string;
+          openapi_version: string;
+          total_operations: number;
+          assigned_operations: number;
+          executed_operations: number;
+          safe_operations: number;
+          response_schemas_validated: number;
+          mutating_operations_blocked: number;
+          blocked_operations: string[];
+          unsafe_requests_performed: false;
+        };
+        operations?: Array<{
+          operation_id: string;
+          method: "GET" | "HEAD";
+          path: string;
+          status: "passed" | "failed" | "blocked";
+          schema_valid?: boolean;
+        }>;
+        findings?: Array<{ rule_id?: string }>;
       }
     | undefined;
   const reportOutput = recordsByAgent.evidence_reporting_analyst?.output?.output as
@@ -752,6 +786,10 @@ export default function QaDirectorPage() {
                         rows={2}
                         placeholder={"/\n/checkout"}
                       />
+                      <small className="fieldHint">
+                        API: incluye la ruta del contrato y el prefijo autorizado,
+                        por ejemplo /openapi.json y /api.
+                      </small>
                     </label>
                     <label
                       className={`safeFlowToggle ${
@@ -828,6 +866,16 @@ export default function QaDirectorPage() {
                         onChange={(event) => setFunctionalDomain(event.target.checked)}
                       />
                       <span>Browser functional</span>
+                    </label>
+                  )}
+                  {hasRuntime && (
+                    <label className="domainChip">
+                      <input
+                        type="checkbox"
+                        checked={apiDomain}
+                        onChange={(event) => setApiDomain(event.target.checked)}
+                      />
+                      <span>API · OpenAPI + GET</span>
                     </label>
                   )}
                   {hasRuntime && (
@@ -1030,6 +1078,82 @@ export default function QaDirectorPage() {
                       <p className="executionSummary">
                         Límite verificado: 0 solicitudes mutantes · 0 acciones
                         destructivas · 0 cambios al código evaluado.
+                      </p>
+                    </section>
+                  )}
+                  {apiOutput?.coverage && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>API / CONTRACT + SAFE GET</span>
+                        <strong>
+                          {apiOutput.coverage.contract_discovered
+                            ? apiOutput.coverage.contract_valid
+                              ? "OPENAPI VÁLIDO"
+                              : "CONTRATO INVÁLIDO"
+                            : "SMOKE GET OBSERVADO"}
+                        </strong>
+                      </div>
+                      <div className="testMatrixStats">
+                        <span>
+                          <strong>
+                            {apiOutput.coverage.total_operations}
+                          </strong>
+                          {apiOutput.coverage.contract_discovered
+                            ? "operaciones contrato"
+                            : "rutas observadas"}
+                        </span>
+                        <span>
+                          <strong>
+                            {apiOutput.coverage.executed_operations}
+                          </strong>
+                          GET/HEAD ejecutados
+                        </span>
+                        <span>
+                          <strong>
+                            {apiOutput.coverage.response_schemas_validated}
+                          </strong>
+                          schemas validados
+                        </span>
+                        <span>
+                          <strong>
+                            {apiOutput.coverage.blocked_operations.length}
+                          </strong>
+                          operaciones bloqueadas
+                        </span>
+                      </div>
+                      {!!apiOutput.operations?.length && (
+                        <div className="componentGrid">
+                          {apiOutput.operations.slice(0, 6).map((operation) => (
+                            <article
+                              className="componentCard"
+                              key={`${operation.method}-${operation.operation_id}`}
+                            >
+                              <small>{operation.operation_id}</small>
+                              <strong>
+                                {operation.method} {operation.path}
+                              </strong>
+                              <span>
+                                {operation.status} · schema{" "}
+                                {operation.schema_valid === true
+                                  ? "válido"
+                                  : operation.schema_valid === false
+                                  ? "inválido"
+                                  : "no documentado"}
+                              </span>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                      <p className="executionSummary">
+                        {apiOutput.coverage.contract_discovered
+                          ? `${apiOutput.coverage.contract_title || "OpenAPI"} ${
+                              apiOutput.coverage.contract_version || ""
+                            } · OpenAPI ${
+                              apiOutput.coverage.openapi_version || "detectado"
+                            }. `
+                          : "No se encontró OpenAPI dentro del allowlist; se ejecutó únicamente smoke GET/HEAD. "}
+                        Límite verificado: 0 requests mutantes · 0 credenciales ·
+                        0 valores de respuesta persistidos.
                       </p>
                     </section>
                   )}

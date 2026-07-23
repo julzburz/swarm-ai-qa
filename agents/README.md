@@ -43,7 +43,7 @@ con los resultados.
 | Security Test Engineer | Core | Hallazgos de seguridad verificables |
 | Accessibility Specialist | Core | Auditoría axe y verificaciones asistidas |
 | Performance Test Engineer | Conditional | Métricas Lighthouse y smoke seguro |
-| API Test Engineer | Conditional | Validación de contratos y endpoints |
+| API Test Engineer | Core | OpenAPI y validación GET/HEAD sin mutaciones |
 | Release Manager | Core | Decisión explicable de release |
 | Evidence & Reporting Analyst | Core | Normalización, deduplicación y reporte |
 | Regression Analyst | Post-hackathon | Comparación con baselines históricos |

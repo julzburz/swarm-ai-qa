@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+)
 
 
 app = FastAPI(title="Swarm AI QA Browser Demo")
@@ -165,3 +169,35 @@ async def security_weak() -> HTMLResponse:
 @app.get("/api/status")
 async def status() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get(
+    "/api/contract-mismatch",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["status"],
+                        "properties": {
+                            "status": {"type": "string"},
+                        },
+                    }
+                }
+            }
+        }
+    },
+)
+async def contract_mismatch() -> JSONResponse:
+    return JSONResponse({"state": 7})
+
+
+@app.get("/api/redirect-external")
+async def api_redirect_external() -> RedirectResponse:
+    return RedirectResponse("https://example.com/outside")
+
+
+@app.post("/api/items")
+async def create_item() -> dict[str, bool]:
+    return {"created": True}

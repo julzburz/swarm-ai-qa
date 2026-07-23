@@ -15,7 +15,11 @@ DOMAIN_AGENT: dict[QualityDomain, tuple[str, list[str]]] = {
     ),
     QualityDomain.API: (
         "api_test_engineer",
-        ["discover_api_contract", "validate_response_schema"],
+        [
+            "discover_api_contract",
+            "execute_safe_get",
+            "validate_response_schema",
+        ],
     ),
     QualityDomain.SECURITY: (
         "security_test_engineer",
@@ -183,6 +187,7 @@ class RuleBasedQaDirector:
         if mission.runtime_target is None:
             requested -= {
                 QualityDomain.FUNCTIONAL,
+                QualityDomain.API,
                 QualityDomain.ACCESSIBILITY,
                 QualityDomain.PERFORMANCE,
             }
