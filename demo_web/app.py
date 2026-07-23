@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 
 
@@ -17,6 +17,7 @@ async def index() -> str:
         <a href="/broken">Broken route</a>
         <a href="/outbound">Outbound request route</a>
         <a href="/inaccessible">Accessibility issue route</a>
+        <a href="/interactive">Safe interaction route</a>
       </nav>
     </main></body></html>
     """
@@ -27,6 +28,60 @@ async def healthy() -> str:
     return """
     <!doctype html><html lang="en"><head><title>Healthy checkout</title></head>
     <body><main><h1>Checkout ready</h1><p role="status">All systems operational.</p></main></body></html>
+    """
+
+
+@app.get("/interactive", response_class=HTMLResponse)
+async def interactive() -> str:
+    return """
+    <!doctype html><html lang="en"><head><title>Interactive QA Demo</title></head>
+    <body><main>
+      <h1>Product discovery</h1>
+      <a href="/interactive/details">View product details</a>
+      <a href="/logout">Log out</a>
+      <form method="get" action="/interactive/search">
+        <label for="query">Search catalog</label>
+        <input id="query" name="query" type="search">
+        <button type="submit">Search</button>
+      </form>
+      <form method="get" action="/interactive/profile">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password">
+        <button type="submit">Inspect profile</button>
+      </form>
+      <form method="post" action="/purchase">
+        <label for="card">Card number</label>
+        <input id="card" name="card_number" type="text">
+        <button type="submit">Purchase</button>
+      </form>
+    </main></body></html>
+    """
+
+
+@app.get("/interactive/details", response_class=HTMLResponse)
+async def interactive_details() -> str:
+    return """
+    <!doctype html><html lang="en"><head><title>Product details</title></head>
+    <body><main><h1>Read-only product details</h1>
+    <a href="/interactive">Back to discovery</a></main></body></html>
+    """
+
+
+@app.get("/interactive/search", response_class=HTMLResponse)
+async def interactive_search(
+    query: str = Query(default=""),
+) -> str:
+    safe_query = (
+        query.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+    return f"""
+    <!doctype html><html lang="en"><head><title>Search results</title></head>
+    <body><main><h1>Search results</h1>
+    <p role="status">Synthetic query received: {safe_query}</p>
+    <a href="/interactive">Back to discovery</a></main></body></html>
     """
 
 

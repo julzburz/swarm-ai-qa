@@ -20,6 +20,7 @@ from orchestrator import SQLiteRunStore
 from schemas.common import Environment, MissionMode, QualityDomain, RuntimeTargetV1
 from schemas.mission import UserMissionRequestV1
 from workers.browser import (
+    BrowserInteractionStepCaptureV1,
     BrowserJourneyCaptureV1,
     BrowserWorkerRequestV1,
     BrowserWorkerResultV1,
@@ -147,6 +148,57 @@ class BrowserWorkerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertGreater(result.request_count, 0)
 
+    async def test_safe_staging_mode_executes_only_bounded_read_interactions(
+        self,
+    ) -> None:
+        worker = PlaywrightBrowserWorker(
+            Path(self.temp_dir.name) / "interactive-artifacts"
+        )
+        result = await worker.run(
+            BrowserWorkerRequestV1(
+                run_id=uuid4(),
+                task_id=uuid4(),
+                base_url=f"http://127.0.0.1:{self.port}",
+                allowed_paths=["/interactive"],
+                blocked_paths=["/logout", "/purchase"],
+                allow_private_network=True,
+                interaction_mode="safe_staging",
+                allow_get_form_submission=True,
+                max_interactions_per_path=3,
+                max_requests=20,
+                timeout_seconds=10,
+            )
+        )
+
+        capture = result.journeys[0]
+        passed_actions = {
+            step.action
+            for step in capture.interaction_steps
+            if step.status == "passed"
+        }
+        self.assertEqual(capture.status, "passed")
+        self.assertIn("click_safe_link", passed_actions)
+        self.assertIn("fill_safe_field", passed_actions)
+        self.assertIn("submit_safe_get_form", passed_actions)
+        self.assertTrue(
+            any("/logout" in value for value in result.blocked_interactions)
+        )
+        self.assertTrue(
+            any(
+                value.startswith("form:POST:") and "/purchase" in value
+                for value in result.blocked_interactions
+            )
+        )
+        self.assertTrue(
+            any(
+                value.startswith("form:sensitive:")
+                and "/interactive/profile" in value
+                for value in result.blocked_interactions
+            )
+        )
+        self.assertEqual(result.interaction_mode, "safe_staging")
+        self.assertLessEqual(result.request_count, 20)
+
 
 class FixtureBrowserWorker:
     def __init__(self, artifact_dir: Path, *, status: str = "passed") -> None:
@@ -172,11 +224,62 @@ class FixtureBrowserWorker:
                     title="Healthy checkout",
                     duration_ms=10,
                     screenshot_path=str(screenshot),
+                    interaction_steps=(
+                        [
+                            BrowserInteractionStepCaptureV1(
+                                action="click_safe_link",
+                                status="passed",
+                                target="View details",
+                                observation=(
+                                    "Safe same-origin link completed."
+                                ),
+                                final_url=(
+                                    str(request.base_url).rstrip("/")
+                                    + path
+                                ),
+                                duration_ms=5,
+                            ),
+                            BrowserInteractionStepCaptureV1(
+                                action="fill_safe_field",
+                                status="passed",
+                                target="query",
+                                observation=(
+                                    "Synthetic safe value filled."
+                                ),
+                                final_url=(
+                                    str(request.base_url).rstrip("/")
+                                    + path
+                                ),
+                                duration_ms=2,
+                            ),
+                            BrowserInteractionStepCaptureV1(
+                                action="submit_safe_get_form",
+                                status="passed",
+                                target="Search",
+                                observation=(
+                                    "Safe GET form submitted."
+                                ),
+                                final_url=(
+                                    str(request.base_url).rstrip("/")
+                                    + path
+                                ),
+                                duration_ms=3,
+                            ),
+                        ]
+                        if request.interaction_mode == "safe_staging"
+                        else []
+                    ),
                 )
                 for path in request.allowed_paths
             ],
             trace_path=str(trace),
             request_count=len(request.allowed_paths),
+            blocked_interactions=(
+                ["link:/logout"]
+                if request.interaction_mode == "safe_staging"
+                else []
+            ),
+            interaction_mode=request.interaction_mode,
             playwright_version="fixture",
             browser_version="fixture",
         )
@@ -298,6 +401,70 @@ class BrowserApiSliceTests(unittest.TestCase):
                 "route-to-source causality remains unproven" in risk
                 for risk in report["residual_risks"]
             )
+        )
+
+    def test_staging_opt_in_enables_safe_interaction_flow(self) -> None:
+        mission = UserMissionRequestV1(
+            objective="Execute a safe interactive checkout flow",
+            mode=MissionMode.TARGETED_EXAMINATION,
+            runtime_target=RuntimeTargetV1(
+                base_url="https://staging.example.com",
+                environment=Environment.STAGING,
+                allowed_paths=["/checkout"],
+                blocked_paths=["/logout", "/purchase"],
+                allow_form_submission=True,
+            ),
+            selected_domains={QualityDomain.FUNCTIONAL},
+        )
+        app = create_app(
+            store=self.store,
+            registry=build_automation_registry(
+                browser_worker=self.worker
+            ),
+        )
+        with TestClient(app) as client:
+            accepted = client.post(
+                "/v1/runs",
+                json={
+                    "mission": mission.model_dump(mode="json"),
+                    "approved": True,
+                },
+            )
+            state = _wait_for_terminal(client, accepted.json()["run_id"])
+
+        self.assertEqual(state["status"], "completed")
+        self.assertEqual(
+            self.worker.requests[0].interaction_mode,
+            "safe_staging",
+        )
+        self.assertTrue(
+            self.worker.requests[0].allow_get_form_submission
+        )
+        outputs = {
+            record["agent_id"]: record["output"]
+            for record in state["task_records"].values()
+        }
+        browser = outputs["browser_automation_engineer"]["output"]
+        coverage = browser["interaction_coverage"]
+        self.assertEqual(coverage["safe_links_clicked"], 1)
+        self.assertEqual(coverage["safe_fields_filled"], 1)
+        self.assertEqual(coverage["safe_get_forms_submitted"], 1)
+        self.assertFalse(coverage["mutating_requests_allowed"])
+        self.assertFalse(coverage["destructive_actions_executed"])
+        test_plan = outputs["test_architect"]["output"]["test_plan"]
+        self.assertIn(
+            "TC-INTERACTION-001",
+            [case["case_id"] for case in test_plan["test_cases"]],
+        )
+        report_results = {
+            result["case_id"]: result
+            for result in outputs["evidence_reporting_analyst"]["output"][
+                "report"
+            ]["test_case_results"]
+        }
+        self.assertEqual(
+            report_results["TC-INTERACTION-001"]["status"],
+            "passed",
         )
 
 

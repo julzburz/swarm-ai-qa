@@ -154,6 +154,9 @@ Un sistema multiagente puede separar contextos, ejecutar herramientas especializ
 
 - Introducir una URL desplegada y descubrir flujos básicos mediante Playwright.
 
+- En staging/sandbox, ejecutar con opt-in clicks internos y formularios GET con datos sintéticos;
+  producción permanece pasiva y nunca se permiten mutaciones ni acciones destructivas.
+
 - Ejecutar auditorías funcionales, seguridad web básica, rendimiento y accesibilidad.
 
 - Diseñar una matriz de casos trazable con riesgo, pasos, resultado esperado y BDD/Gherkin.
@@ -649,7 +652,7 @@ Report Analyst crea pasos reproducibles y evidencia enlazada
 | FR-004 | Run orchestration          | Crear, pausar, reanudar, cancelar y reintentar runs                   | P0            |
 | FR-005 | Live agent feed            | Mostrar estado, tarea, evidencia y dependencias de cada agente        | P0            |
 | FR-006 | Risk planning              | Generar plan basado en diff, stack, criticidad y policies             | P0            |
-| FR-007 | Browser testing            | Descubrir y ejecutar flujos Playwright con trazas                     | P0            |
+| FR-007 | Browser testing            | Navegar y ejecutar flujos seguros GET en staging con trazas           | P0            |
 | FR-008 | Security checks            | Ejecutar al menos SAST/secret/web headers según fuente                | P0            |
 | FR-009 | Performance checks         | Ejecutar smoke y métricas base; soportar k6                           | P0            |
 | FR-010 | Accessibility              | Ejecutar axe y checks de teclado configurables                        | P0            |

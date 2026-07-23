@@ -20,6 +20,8 @@ La fundacion ejecutable incluye:
 - executors reales para Repository Analyst, Test Architect y Evidence Reporting Analyst;
 - worker Playwright con navegacion y red acotadas;
 - executor real de Browser Automation Engineer;
+- flujos funcionales seguros opt-in para staging/sandbox con clicks internos y formularios GET
+  sinteticos; produccion permanece pasiva;
 - worker axe-core y executor real de Accessibility Specialist;
 - correlacion Browser + Accessibility por URL autorizada;
 - worker HTTP/TLS y executor real de Security Test Engineer pasivo;
@@ -35,7 +37,7 @@ La fundacion ejecutable incluye:
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
 - consulta filtrable de findings y descarga de artifacts con verificacion SHA-256;
-- 80 pruebas automatizadas verdes.
+- 83 pruebas automatizadas verdes.
 
 El proyecto esta versionado en `https://github.com/julzburz/swarm-ai-qa`. La rama estable es
 `main`; no copiar ni publicar `.env`, `.data/` ni credenciales.
@@ -127,6 +129,12 @@ El worker Playwright implementa:
 - hashes SHA-256 y referencias `artifact://browser/...`;
 - findings funcionales para journeys fallidos;
 - version de Playwright y Chromium dentro de `ToolExecutionResultV1`.
+
+El modo `safe_staging` es opt-in y solo existe en staging/sandbox. Ejecuta como maximo tres
+interacciones por ruta: enlaces same-origin autorizados, llenado de campos no sensibles con datos
+sinteticos y envio de formularios GET. La politica registra y omite POST, campos sensibles,
+logout, compras, pagos, rutas externas y acciones destructivas. El reporte separa las
+interacciones ejecutadas de las bloqueadas. Produccion rechaza el opt-in en el contrato.
 
 ## Actualizacion implementada: seguridad de targets y correlacion del enjambre
 
@@ -481,6 +489,24 @@ restored_after_backend_restart=true
 frontend_proxy_verified=true
 ```
 
+Validacion Neon del modo funcional seguro:
+
+```text
+run_id=c404a693-233a-4414-8087-33014bb1caff
+target=https://example.com/
+interaction_mode=safe_staging
+safe_actions_executed=0
+unsafe_or_external_interactions_blocked=1
+mutating_requests_allowed=false
+destructive_actions_executed=false
+TC-INTERACTION-001=blocked
+interaction_case_evidence_refs=2
+```
+
+El resultado `blocked` es deliberadamente honesto: el target reservado no ofrece un enlace
+same-origin ni un formulario GET seguro. La ejecucion real positiva se valida contra
+`demo_web` con Chromium dentro de `test_safe_staging_mode_executes_only_bounded_read_interactions`.
+
 ## Limitaciones conocidas
 
 - Hay executors reales para Repository Analyst, Test Architect, Browser Automation,
@@ -491,7 +517,8 @@ frontend_proxy_verified=true
 - La autenticacion actual usa una sola clave Bearer; aun no existen usuarios, sesiones ni roles.
 - El frontend tiene historial de runs, pero aun no tiene listado persistente de proyectos.
 - La UI habilita Repository, Browser Functional, Accessibility, Security y Performance.
-- Browser Automation es navigation-only: todavia no ejecuta clicks, formularios ni login.
+- Browser Automation ejecuta clicks internos y formularios GET sinteticos solo con opt-in en
+  staging/sandbox; login, POST, pagos, logout, cambios de cuenta y destruccion siguen prohibidos.
 - Accessibility es automatizado con axe; teclado, lector de pantalla, zoom/reflow y estados
   interactivos permanecen como gaps manuales visibles.
 - La redaccion textual cubre patrones comunes, pero las capturas visuales todavia no tienen un
@@ -517,10 +544,10 @@ frontend_proxy_verified=true
 
 El siguiente corte recomendado es completar el especialista funcional sin ampliar el riesgo:
 
-1. Agregar acciones Browser de lectura para clicks y formularios de prueba solo en staging.
-2. Mantener produccion en navegacion pasiva salvo autorizacion y cuenta de prueba explicitas.
-3. Incorporar API Test Engineer para contratos OpenAPI y operaciones `GET` seguras.
-4. Preparar despliegue publico con `SWARM_API_KEY`; despues evaluar usuarios y roles.
+1. Incorporar API Test Engineer para contratos OpenAPI y operaciones `GET` seguras.
+2. Preparar despliegue publico con `SWARM_API_KEY`; despues evaluar usuarios y roles.
+3. Agregar redaccion visual de screenshots/traces antes de soportar sesiones autenticadas.
+4. Mantener produccion en navegacion pasiva.
 
 Trabajo complementario pendiente: reanudacion de tareas tras reiniciar el proceso y
 almacenamiento externo de artefactos.

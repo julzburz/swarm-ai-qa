@@ -82,6 +82,14 @@ class MissionContractTests(unittest.TestCase):
                 allow_load_testing=True,
             )
 
+    def test_production_rejects_form_submission(self) -> None:
+        with self.assertRaises(ValidationError):
+            RuntimeTargetV1(
+                base_url="https://example.com",
+                environment=Environment.PRODUCTION,
+                allow_form_submission=True,
+            )
+
     def test_runtime_target_rejects_internal_and_metadata_addresses(self) -> None:
         for unsafe_url in (
             "http://127.0.0.1:8000",

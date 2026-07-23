@@ -93,6 +93,12 @@ metadata. Los subrecursos del mismo origen usan una politica separada para no co
 navegables con CSS, JavaScript o endpoints necesarios. Los screenshots y traces se escriben
 bajo `.data/artifacts/`.
 
+Cuando `allow_form_submission=true` en staging o sandbox, Browser activa `safe_staging`: puede
+hacer hasta tres interacciones por ruta, limitadas a enlaces internos autorizados y formularios
+GET con valores sinteticos. Omite campos sensibles, POST y otros metodos mutantes, logout,
+compras, pagos y acciones destructivas. Produccion rechaza este opt-in desde el contrato de
+mision y permanece en navegacion pasiva.
+
 Accessibility ejecuta axe-core sobre las mismas rutas permitidas y conserva un JSON redactado
 con versión, reglas, selectores y resultados. Reporting correlaciona cada finding axe con la
 navegación Playwright de la misma URL, pero declara pendientes teclado, lector de pantalla,

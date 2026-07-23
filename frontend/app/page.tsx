@@ -187,6 +187,7 @@ export default function QaDirectorPage() {
   const [runtimeUrl, setRuntimeUrl] = useState("https://example.com");
   const [environment, setEnvironment] = useState("staging");
   const [allowedPaths, setAllowedPaths] = useState("/");
+  const [interactiveFlows, setInteractiveFlows] = useState(false);
   const [repositoryDomain, setRepositoryDomain] = useState(true);
   const [functionalDomain, setFunctionalDomain] = useState(true);
   const [accessibilityDomain, setAccessibilityDomain] = useState(true);
@@ -208,6 +209,8 @@ export default function QaDirectorPage() {
 
   const hasRepository = sourceMode !== "runtime";
   const hasRuntime = sourceMode !== "repository";
+  const canUseInteractiveFlows =
+    hasRuntime && (environment === "staging" || environment === "sandbox");
   const selectedDomains = useMemo(() => {
     const domains: Domain[] = [];
     if (hasRepository && repositoryDomain) domains.push("repository");
@@ -263,7 +266,9 @@ export default function QaDirectorPage() {
         base_url: parsedRuntime.toString(),
         environment,
         allowed_paths: paths,
-        blocked_paths: ["/admin", "/logout"],
+        blocked_paths: ["/admin", "/logout", "/purchase"],
+        allow_form_submission:
+          canUseInteractiveFlows && interactiveFlows,
       };
     }
     if (depth === "quick") {
@@ -481,6 +486,19 @@ export default function QaDirectorPage() {
         test_plan?: {
           strategy_summary: string;
           test_cases: TestCaseDesign[];
+        };
+    }
+    | undefined;
+  const browserOutput = recordsByAgent.browser_automation_engineer?.output?.output as
+    | {
+        interaction_coverage?: {
+          mode: "navigation_only" | "safe_staging";
+          safe_links_clicked: number;
+          safe_fields_filled: number;
+          safe_get_forms_submitted: number;
+          blocked_interactions: number;
+          mutating_requests_allowed: false;
+          destructive_actions_executed: false;
         };
       }
     | undefined;
@@ -735,6 +753,28 @@ export default function QaDirectorPage() {
                         placeholder={"/\n/checkout"}
                       />
                     </label>
+                    <label
+                      className={`safeFlowToggle ${
+                        canUseInteractiveFlows ? "" : "disabled"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={interactiveFlows && canUseInteractiveFlows}
+                        disabled={!canUseInteractiveFlows}
+                        onChange={(event) =>
+                          setInteractiveFlows(event.target.checked)
+                        }
+                      />
+                      <span>
+                        <strong>FLUJOS FUNCIONALES SEGUROS</strong>
+                        <small>
+                          {canUseInteractiveFlows
+                            ? "Clics internos y formularios GET con datos sintéticos. Nunca POST, compras, logout ni acciones destructivas."
+                            : "Disponible solo en staging o sandbox. Producción permanece en observación pasiva."}
+                        </small>
+                      </span>
+                    </label>
                   </>
                 )}
               </div>
@@ -948,6 +988,51 @@ export default function QaDirectorPage() {
 
               {phase === "report" && (
                 <div className="reportArea">
+                  {browserOutput?.interaction_coverage && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>BROWSER / SAFE FUNCTIONAL FLOW</span>
+                        <strong>
+                          {browserOutput.interaction_coverage.mode === "safe_staging"
+                            ? "STAGING ACTIVO"
+                            : "NAVEGACIÓN PASIVA"}
+                        </strong>
+                      </div>
+                      <div className="testMatrixStats">
+                        <span>
+                          <strong>
+                            {browserOutput.interaction_coverage.safe_links_clicked}
+                          </strong>
+                          enlaces seguros
+                        </span>
+                        <span>
+                          <strong>
+                            {browserOutput.interaction_coverage.safe_fields_filled}
+                          </strong>
+                          campos sintéticos
+                        </span>
+                        <span>
+                          <strong>
+                            {
+                              browserOutput.interaction_coverage
+                                .safe_get_forms_submitted
+                            }
+                          </strong>
+                          formularios GET
+                        </span>
+                        <span>
+                          <strong>
+                            {browserOutput.interaction_coverage.blocked_interactions}
+                          </strong>
+                          interacciones bloqueadas
+                        </span>
+                      </div>
+                      <p className="executionSummary">
+                        Límite verificado: 0 solicitudes mutantes · 0 acciones
+                        destructivas · 0 cambios al código evaluado.
+                      </p>
+                    </section>
+                  )}
                   {!!testCases.length && (
                     <section className="reportBlock">
                       <div className="blockTitle">

@@ -38,7 +38,21 @@ class BrowserAgentOutputV1(StrictModel):
     observations: list[RuntimeObservationV1] = Field(default_factory=list)
     findings: list[FindingV1] = Field(default_factory=list)
     verification_responses: list[VerificationResponseV1] = Field(default_factory=list)
+    interaction_coverage: "BrowserInteractionCoverageV1" = Field(
+        default_factory=lambda: BrowserInteractionCoverageV1()
+    )
     tool_executions: list[ToolExecutionResultV1] = Field(min_length=1)
+
+
+class BrowserInteractionCoverageV1(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    mode: Literal["navigation_only", "safe_staging"] = "navigation_only"
+    safe_links_clicked: int = Field(ge=0, default=0)
+    safe_fields_filled: int = Field(ge=0, default=0)
+    safe_get_forms_submitted: int = Field(ge=0, default=0)
+    blocked_interactions: int = Field(ge=0, default=0)
+    mutating_requests_allowed: Literal[False] = False
+    destructive_actions_executed: Literal[False] = False
 
 
 class SecurityTaskV1(SpecialistTaskBaseV1):

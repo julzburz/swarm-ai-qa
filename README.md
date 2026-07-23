@@ -19,7 +19,8 @@ a real quality-engineering team:
 1. **QA Director** interprets the mission and creates a deterministic execution plan.
 2. **Repository Analyst** detects components, languages, frameworks and pull-request impact.
 3. **Test Architect** converts evidence and risk into approved runtime journeys.
-4. **Browser Automation Engineer** executes bounded Playwright navigation.
+4. **Browser Automation Engineer** executes bounded Playwright navigation and opt-in safe
+   functional flows in staging/sandbox.
 5. **Accessibility Specialist** runs axe-core against approved pages.
 6. **Security Test Engineer** passively audits authorized HTTP/TLS responses.
 7. **Performance Test Engineer** measures isolated single-user lab performance signals.
@@ -71,6 +72,10 @@ addresses.
 - Pull-request impact grouped by affected component.
 - Conservative Next.js route candidates derived from verifiable file conventions.
 - Playwright Chromium journeys with screenshots, traces, console errors and network observations.
+- Opt-in staging/sandbox functional flows: same-origin safe links and GET forms with synthetic
+  non-sensitive data, capped at three interactions per route.
+- Interactive policy blocks POST/PUT/PATCH/DELETE, sensitive fields, logout, purchases and
+  destructive actions; production remains passive.
 - Real axe-core WCAG A/AA scans with redacted JSON evidence and explicit manual coverage gaps.
 - Passive HTTPS/TLS, security-header, cookie and CORS inspection with redacted evidence.
 - Security execution limited to allowlisted routes, bounded `GET` requests and no exploitation.
@@ -172,7 +177,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 80 tests
+Ran 83 tests
 OK
 ```
 
@@ -204,7 +209,8 @@ workers/       Bounded tool workers
 ## Current limitations
 
 - Bearer authentication is single-tenant; user accounts and role-based access are not implemented.
-- Browser automation is navigation-only: no login, clicks or form submission yet.
+- Browser interaction is intentionally narrow: no login, authenticated sessions, POST forms,
+  payments, account changes or destructive actions. Production is navigation-only.
 - Screenshots and traces must not contain real sensitive user data.
 - Performance is a small laboratory smoke, not field telemetry: it does not measure INP,
   representative user conditions or regression without a baseline.

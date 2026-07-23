@@ -549,6 +549,58 @@ def _test_case_results(
                     for location in finding.affected_locations
                 )
             ]
+            if test_case.test_type == "functional":
+                interaction_steps = [
+                    step
+                    for step in journey.steps
+                    if step.step.startswith(
+                        (
+                            "click_safe_link:",
+                            "fill_safe_field:",
+                            "submit_safe_get_form:",
+                            "assert_safe_destination:",
+                        )
+                    )
+                ]
+                if not interaction_steps:
+                    interaction_status = "blocked"
+                elif any(
+                    step.status == "failed"
+                    for step in interaction_steps
+                ):
+                    interaction_status = "failed"
+                elif any(
+                    step.status == "passed"
+                    for step in interaction_steps
+                ):
+                    interaction_status = "passed"
+                else:
+                    interaction_status = "blocked"
+                results.append(
+                    TestCaseExecutionV1(
+                        case_id=test_case.case_id,
+                        status=interaction_status,
+                        observation=(
+                            (
+                                "Browser no encontró una interacción que "
+                                "cumpliera la política segura; el caso quedó "
+                                "bloqueado."
+                            )
+                            if not interaction_steps
+                            else (
+                                f"Browser registró {len(interaction_steps)} "
+                                "paso(s) interactivos seguros; "
+                                f"estado final {interaction_status}."
+                            )
+                        ),
+                        executed_by=test_case.assigned_agent,
+                        evidence_refs=journey.evidence_refs,
+                        finding_ids=[
+                            finding.finding_id for finding in related
+                        ],
+                    )
+                )
+                continue
             results.append(
                 TestCaseExecutionV1(
                     case_id=test_case.case_id,

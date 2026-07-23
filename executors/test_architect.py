@@ -90,7 +90,7 @@ class TestArchitectExecutor:
                 "Aplicar una estrategia basada en riesgos y permanentemente "
                 "read-only. Ejecutar solamente casos automatizados seguros "
                 "respaldados por los agentes seleccionados; conservar los "
-                "casos negativos, interactivos y UAT como trabajo manual "
+                "casos negativos, autenticados y UAT como trabajo manual "
                 "explícito en lugar de simular resultados."
             ),
             coverage_objectives=objectives,
@@ -313,6 +313,46 @@ def _design_test_cases(
                     ),
                 ]
             )
+            if (
+                runtime.allow_form_submission
+                and runtime.environment.value in {"staging", "sandbox"}
+            ):
+                cases.append(
+                    TestCaseDesignV1(
+                        case_id=f"TC-INTERACTION-{suffix}",
+                        title=f"Flujo interactivo seguro de {path}",
+                        domain=QualityDomain.FUNCTIONAL,
+                        test_type="functional",
+                        priority="high",
+                        risk_reference=risk_by_domain[
+                            QualityDomain.FUNCTIONAL
+                        ],
+                        preconditions=[
+                            "El target es staging o sandbox.",
+                            "El usuario autorizó interacciones seguras.",
+                            "Las rutas destino pertenecen al allowlist.",
+                        ],
+                        steps=[
+                            "Descubrir un enlace interno no destructivo.",
+                            "Ejecutar el click y validar el destino same-origin.",
+                            "Completar campos no sensibles con datos sintéticos.",
+                            "Enviar únicamente formularios GET autorizados.",
+                        ],
+                        expected_result=(
+                            "Las interacciones permitidas completan el flujo "
+                            "sin requests mutantes ni acciones destructivas."
+                        ),
+                        gherkin=_gherkin(
+                            f"Interacción funcional segura de {path}",
+                            "el target staging está autorizado para interacción",
+                            "Browser Automation ejecuta enlaces y formularios GET seguros",
+                            "el flujo permanece en el allowlist y no muta datos",
+                        ),
+                        execution_mode="automated",
+                        assigned_agent="browser_automation_engineer",
+                        target_reference=url,
+                    )
+                )
         if QualityDomain.ACCESSIBILITY in domains:
             cases.extend(
                 [

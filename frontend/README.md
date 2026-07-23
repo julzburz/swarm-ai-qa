@@ -9,6 +9,12 @@ Completed runs include Test Design Studio: a compact risk-linked matrix with pre
 steps, expected results and Spanish BDD/Gherkin. Automated cases receive only evidence-backed
 statuses; negative, keyboard, authenticated and UAT cases remain visibly `manual_required`.
 
+For staging and sandbox targets, QA Director exposes an explicit **Flujos funcionales seguros**
+option. It permits only bounded same-origin link clicks and GET forms filled with synthetic,
+non-sensitive values. Production disables the option. The report shows executed links, fields,
+GET submissions and blocked interactions, while confirming that mutating requests and destructive
+actions were not allowed.
+
 ## Run locally
 
 Start the FastAPI automation factory from the project root:
