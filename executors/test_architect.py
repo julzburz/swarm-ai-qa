@@ -124,7 +124,10 @@ def _critical_journeys(
     domains: set[QualityDomain],
 ) -> list[str]:
     target = context.mission.runtime_target
-    if target is None or QualityDomain.FUNCTIONAL not in domains:
+    if target is None or not {
+        QualityDomain.FUNCTIONAL,
+        QualityDomain.ACCESSIBILITY,
+    } & domains:
         return []
     candidates = (
         [

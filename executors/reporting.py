@@ -5,7 +5,7 @@ from schemas.common import QualityDomain
 from schemas.evidence import AgentOutputEnvelopeV1, CorrelatedFindingV1
 from schemas.execution import CoverageSummaryV1, SpecialistTaskV1
 from schemas.reporting import QaRunReportV1
-from schemas.specialists import BrowserAgentOutputV1
+from schemas.specialists import AccessibilityAgentOutputV1, BrowserAgentOutputV1
 
 from .models import (
     EvidenceReportingOutputV1,
@@ -24,6 +24,7 @@ class EvidenceReportingExecutor:
         architecture_envelope = outputs.get("test_architect")
         repository_envelope = outputs.get("repository_analyst")
         browser_envelope = outputs.get("browser_automation_engineer")
+        accessibility_envelope = outputs.get("accessibility_specialist")
         if architecture_envelope is None:
             raise ValueError("reporting requires the approved test architecture")
 
@@ -40,6 +41,13 @@ class EvidenceReportingExecutor:
             if browser_envelope is not None
             else None
         )
+        accessibility = (
+            AccessibilityAgentOutputV1.model_validate(
+                accessibility_envelope.output
+            )
+            if accessibility_envelope is not None
+            else None
+        )
         plan = architecture.test_plan
         artifact_refs = _unique_evidence(
             [
@@ -54,6 +62,8 @@ class EvidenceReportingExecutor:
             executed_domains.add(QualityDomain.REPOSITORY)
         if browser is not None:
             executed_domains.add(QualityDomain.FUNCTIONAL)
+        if accessibility is not None:
+            executed_domains.add(QualityDomain.ACCESSIBILITY)
         completed_objectives = [
             objective
             for objective in plan.coverage_objectives
@@ -90,8 +100,26 @@ class EvidenceReportingExecutor:
         correlated: list[CorrelatedFindingV1] = []
         if browser is not None:
             for finding in browser.findings:
+                related_accessibility = (
+                    [
+                        candidate
+                        for candidate in accessibility.findings
+                        if set(candidate.affected_locations)
+                        & set(finding.affected_locations)
+                    ]
+                    if accessibility is not None
+                    else []
+                )
                 evidence = _unique_evidence(
-                    [*finding.evidence_refs, *repository_evidence]
+                    [
+                        *finding.evidence_refs,
+                        *repository_evidence,
+                        *[
+                            evidence
+                            for candidate in related_accessibility
+                            for evidence in candidate.evidence_refs
+                        ],
+                    ]
                 )
                 reason = (
                     "Browser finding preserved and correlated with "
@@ -102,6 +130,77 @@ class EvidenceReportingExecutor:
                 correlated.append(
                     CorrelatedFindingV1(
                         primary_finding=finding,
+                        related_finding_ids=[
+                            candidate.finding_id
+                            for candidate in related_accessibility
+                        ],
+                        final_confidence=finding.confidence,
+                        correlation_reason=reason,
+                        evidence_refs=evidence,
+                    )
+                )
+        if accessibility is not None:
+            for finding in accessibility.findings:
+                matching_journeys = (
+                    [
+                        journey
+                        for journey in browser.journeys
+                        if journey.environment_url
+                        in finding.affected_locations
+                    ]
+                    if browser is not None
+                    else []
+                )
+                matching_browser_findings = (
+                    [
+                        candidate
+                        for candidate in browser.findings
+                        if set(candidate.affected_locations)
+                        & set(finding.affected_locations)
+                    ]
+                    if browser is not None
+                    else []
+                )
+                evidence = _unique_evidence(
+                    [
+                        *finding.evidence_refs,
+                        *repository_evidence,
+                        *[
+                            evidence
+                            for journey in matching_journeys
+                            for evidence in journey.evidence_refs
+                        ],
+                        *[
+                            evidence
+                            for candidate in matching_browser_findings
+                            for evidence in candidate.evidence_refs
+                        ],
+                    ]
+                )
+                if matching_journeys:
+                    reason = (
+                        "Automated axe finding correlated with Playwright "
+                        "navigation evidence for the same URL. Keyboard and "
+                        "screen-reader behavior remain manually unverified."
+                    )
+                elif correlation_context:
+                    reason = (
+                        "Automated axe finding correlated with "
+                        f"{correlation_context}; no source-code causality or "
+                        "full WCAG conformance is asserted."
+                    )
+                else:
+                    reason = (
+                        "Automated axe finding preserved without claiming "
+                        "manual accessibility verification."
+                    )
+                correlated.append(
+                    CorrelatedFindingV1(
+                        primary_finding=finding,
+                        related_finding_ids=[
+                            candidate.finding_id
+                            for candidate in matching_browser_findings
+                        ],
                         final_confidence=finding.confidence,
                         correlation_reason=reason,
                         evidence_refs=evidence,
@@ -124,6 +223,19 @@ class EvidenceReportingExecutor:
             residual_risks.append(
                 "Browser coverage is limited to explicitly allowlisted, "
                 "navigation-only journeys."
+            )
+        if accessibility is not None:
+            summary_parts.append(
+                f"axe-core scanned {accessibility.coverage.pages_scanned} "
+                f"page(s) and produced {len(accessibility.findings)} "
+                "automated accessibility finding group(s)"
+            )
+            residual_risks.extend(
+                accessibility.coverage.manual_criteria_not_checked
+            )
+            residual_risks.append(
+                "Automated axe results cover detectable WCAG A/AA rules only "
+                "and do not establish conformance."
             )
         if repository is not None and browser is not None:
             residual_risks.append(

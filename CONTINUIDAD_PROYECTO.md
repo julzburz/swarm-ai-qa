@@ -20,13 +20,15 @@ La fundacion ejecutable incluye:
 - executors reales para Repository Analyst, Test Architect y Evidence Reporting Analyst;
 - worker Playwright con navegacion y red acotadas;
 - executor real de Browser Automation Engineer;
+- worker axe-core y executor real de Accessibility Specialist;
+- correlacion Browser + Accessibility por URL autorizada;
 - aplicacion web demo local y determinista;
 - frontend Next.js de QA Director conectado al control plane;
 - deteccion de monorepos y componentes con impacto de cambio por componente;
 - seleccion automatica y persistencia durable en Neon con fallback SQLite;
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
-- 57 pruebas automatizadas verdes.
+- 61 pruebas automatizadas verdes.
 
 La carpeta no estaba inicializada como repositorio Git al realizar esta actualizacion. Si se
 trabaja mediante una carpeta sincronizada, verificar que todos los archivos hayan terminado
@@ -183,6 +185,19 @@ Al iniciar con Neon, el backend comprueba la conexión y las tablas `runs`, `run
 conexión. Se validó una ejecución real de un repositorio público de GitHub, se cerró el store y
 se confirmó que la API restauró el mismo run completado después del reinicio.
 
+## Actualizacion implementada: Accessibility Specialist real
+
+La factory de automatizacion registra un especialista de accesibilidad respaldado por axe-core
+4.11.4 y Playwright:
+
+- navega unicamente rutas autorizadas mediante `GET/HEAD`;
+- aplica reglas automatizables WCAG A/AA 2.0, 2.1 y 2.2;
+- guarda resultados JSON redactados fuera del repositorio evaluado;
+- convierte violaciones en findings con regla, impacto, selectores y evidencia;
+- solicita verificacion de teclado/foco para findings high y critical;
+- correlaciona findings axe con evidencia Browser de la misma URL;
+- declara expresamente que axe no demuestra conformidad WCAG total.
+
 ## Archivos agregados o modificados
 
 - `api/app.py`: factory de FastAPI, rutas, JSON y SSE.
@@ -191,18 +206,21 @@ se confirmó que la API restauró el mismo run completado después del reinicio.
 - `api/schemas.py`: contratos HTTP del primer corte.
 - `api/README.md`: instrucciones breves del modulo.
 - `api/github_factory.py`: factory con los tres executors GitHub reales.
-- `api/automation_factory.py`: factory compuesta GitHub + Browser.
+- `api/automation_factory.py`: factory compuesta GitHub + Browser + Accessibility.
 - `adapters/github/`: cliente REST, modelos internos y limites read-only.
 - `workers/browser/`: puerto, modelos y worker Playwright.
+- `workers/accessibility/`: contratos y worker Playwright + axe-core.
 - `executors/repository.py`: perfil tecnologico, contexto e impacto de PR.
 - `executors/test_architect.py`: estrategia y cobertura basadas en evidencia.
 - `executors/browser.py`: conversion de capturas en evidencia, journeys y findings.
+- `executors/accessibility.py`: findings axe, cobertura y solicitudes de verificacion.
 - `executors/reporting.py`: reporte final sin inventar findings.
 - `executors/factory.py`: registro explicito del primer enjambre ejecutable.
 - `demo_web/`: objetivo local determinista sano, roto y con solicitud externa.
 - `tests/test_api.py`: seis pruebas del control plane.
 - `tests/test_github_slice.py`: cliente HTTP y run GitHub completo con fixtures.
 - `tests/test_browser_worker.py`: politica, Chromium real y run runtime completo.
+- `tests/test_accessibility_agent.py`: axe real, executor y correlacion con Browser.
 - `frontend/`: QA Director Next.js, formulario de mision, preview, SSE y reporte.
 - `requirements.txt`: FastAPI y Uvicorn.
 - `requirements-dev.txt`: dependencias de desarrollo y pruebas.
@@ -334,7 +352,7 @@ python -m unittest discover -s tests -v
 Resultado al 22 de julio de 2026:
 
 ```text
-Ran 57 tests
+Ran 61 tests
 OK
 ```
 
@@ -347,6 +365,8 @@ Cobertura funcional de las nuevas pruebas:
 - aprobacion explicita obligatoria;
 - rechazo seguro cuando faltan executors;
 - ejecucion completa, consulta de estado, historial y SSE;
+- escaneo axe real sobre paginas sanas y con barreras deliberadas;
+- mision Accessibility aislada y correlacion Browser + Accessibility;
 - cancelacion de un run activo.
 - uso exclusivo de `GET` y header de version GitHub;
 - repositorios privados rechazados antes de acceder a red cuando falta token;
@@ -403,15 +423,18 @@ La aplicacion demo tambien se valido en el navegador integrado:
 
 ## Limitaciones conocidas
 
-- Hay executors reales para Repository Analyst, Test Architect, Browser Automation y Reporting.
+- Hay executors reales para Repository Analyst, Test Architect, Browser Automation,
+  Accessibility y Reporting.
 - La factory generica `api.app:create_app` sigue sin executors; para GitHub se debe usar
   `api.github_factory:create_github_app`.
 - Todavia no existen endpoints de projects, targets, findings, artifacts o GitHub Checks.
 - La autenticacion actual usa una sola clave Bearer; aun no existen usuarios, sesiones ni roles.
 - El frontend tiene historial de runs, pero aun no tiene listado persistente de proyectos.
-- La UI habilita unicamente Repository y Browser Functional; las demas areas se muestran
-  explicitamente como pendientes.
+- La UI habilita Repository, Browser Functional y Accessibility; Security y Performance se
+  muestran explicitamente como pendientes.
 - Browser Automation es navigation-only: todavia no ejecuta clicks, formularios ni login.
+- Accessibility es automatizado con axe; teclado, lector de pantalla, zoom/reflow y estados
+  interactivos permanecen como gaps manuales visibles.
 - La redaccion textual cubre patrones comunes, pero las capturas visuales todavia no tienen un
   pipeline automatico de deteccion/redaccion de datos sensibles.
 - Los traces Playwright tambien pueden contener datos sensibles; no deben usarse todavia con
@@ -430,12 +453,12 @@ La aplicacion demo tambien se valido en el navegador integrado:
 
 ## Siguiente corte recomendado
 
-La inteligencia multicomponente, QA Director, Neon, autenticación Bearer e historial de runs ya
-están implementados. El siguiente corte recomendado amplía la cobertura real del enjambre:
+La inteligencia multicomponente, QA Director, Neon, autenticación, historial y Accessibility ya
+están implementados. El siguiente corte recomendado amplía la entrega de evidencia:
 
-1. Integrar Accessibility con axe y correlación Browser + Accessibility.
-2. Agregar endpoints dedicados de findings y artefactos para el dashboard.
-3. Después incorporar Security básico y Performance smoke sin pruebas destructivas.
+1. Agregar endpoints dedicados de findings y artefactos para el dashboard.
+2. Incorporar Security básico con comprobaciones pasivas y no destructivas.
+3. Después incorporar Performance smoke de un solo usuario.
 4. Diseñar usuarios y roles solo si el proyecto evoluciona después del hackathon.
 
 Trabajo complementario pendiente: endpoints de findings y artefactos, persistencia/reanudacion

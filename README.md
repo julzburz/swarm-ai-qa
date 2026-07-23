@@ -58,6 +58,8 @@ addresses.
 - Pull-request impact grouped by affected component.
 - Conservative Next.js route candidates derived from verifiable file conventions.
 - Playwright Chromium journeys with screenshots, traces, console errors and network observations.
+- Real axe-core WCAG A/AA scans with redacted JSON evidence and explicit manual coverage gaps.
+- Browser + accessibility correlation by the exact allowlisted runtime URL.
 - Repository + runtime evidence correlation without unsupported causal claims.
 - Next.js QA Director UI with real planning, execution status, event streaming and reports.
 - Automatic Neon persistence when `DATABASE_URL` exists, with SQLite fallback for local work.
@@ -68,7 +70,7 @@ addresses.
 - **Control plane:** Python, FastAPI, Pydantic
 - **Orchestration:** asynchronous dependency graph, retries, cancellation and event stream
 - **Repository intelligence:** GitHub REST API, read-only
-- **Runtime QA:** Playwright + Chromium
+- **Runtime QA:** Playwright + Chromium + axe-core
 - **Frontend:** Next.js App Router, React, TypeScript
 - **Persistence:** automatic Neon PostgreSQL selection with local SQLite fallback
 
@@ -135,6 +137,7 @@ Important variables:
 | `SWARM_GITHUB_ALLOWED_PRIVATE_REPOSITORIES` | Canonical private repository IDs |
 | `SWARM_SQLITE_PATH` | Local checkpoint database |
 | `SWARM_ARTIFACT_ROOT` | Local screenshots and Playwright traces |
+| `SWARM_AXE_SCRIPT_PATH` | Optional override for the installed axe-core script |
 
 Public repositories are intentionally inspected without the server's private GitHub token.
 
@@ -147,7 +150,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 57 tests
+Ran 61 tests
 OK
 ```
 
@@ -181,7 +184,9 @@ workers/       Bounded tool workers
 - Bearer authentication is single-tenant; user accounts and role-based access are not implemented.
 - Browser automation is navigation-only: no login, clicks or form submission yet.
 - Screenshots and traces must not contain real sensitive user data.
-- Accessibility, security and performance agents are visible as pending and never simulated.
+- Security and performance agents are visible as pending and never simulated.
+- axe-core detects only automatable issues; keyboard, screen-reader and full WCAG conformance
+  remain explicitly unverified.
 - Active tasks are not resumed automatically after a process restart.
 
 ## Documentation
