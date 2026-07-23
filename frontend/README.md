@@ -33,3 +33,7 @@ coverage and the manual criteria that were not verified.
 Security can be selected for runtime targets and reports HTTPS/TLS, response-header, cookie and
 CORS signals. It uses allowlisted `GET` requests only, redacts cookie values and never exploits
 the evaluated application.
+
+Completed reports also load the run artifact catalog. Materialized evidence can be downloaded
+through the server-side `/control-plane` proxy, so an enabled API key remains outside the
+browser and internal filesystem paths are never rendered.

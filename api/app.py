@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Security, status
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, status
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from orchestrator import (
@@ -22,16 +22,26 @@ from orchestrator import (
 from database.config import DatabaseSettings
 from orchestrator.models import RunEventV1, RunStateV1, RunStatus
 from orchestrator.store import RunStore
+from schemas.common import QualityDomain, Severity
 from schemas.mission import UserMissionRequestV1
 
 from .config import ApiSettings
 from .controller import MissingExecutorsError, RunController
 from .schemas import (
+    ArtifactListResponseV1,
     CreateRunRequestV1,
+    FindingListResponseV1,
     HealthResponseV1,
     PlanPreviewResponseV1,
     RunAcceptedResponseV1,
     RunSummaryV1,
+)
+from .results import (
+    artifact_integrity_matches,
+    artifacts_response,
+    find_artifact_record,
+    findings_response,
+    resolve_local_artifact,
 )
 
 
@@ -200,6 +210,88 @@ def create_app(
         if state is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
         return state
+
+    @app.get(
+        "/v1/runs/{run_id}/findings",
+        response_model=FindingListResponseV1,
+        tags=["results"],
+        dependencies=protected,
+    )
+    async def list_findings(
+        run_id: UUID,
+        domain: QualityDomain | None = None,
+        severity: Severity | None = None,
+        limit: Annotated[int, Query(ge=1, le=200)] = 100,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> FindingListResponseV1:
+        state = _require_run(run_store, run_id)
+        return findings_response(
+            state,
+            domain=domain,
+            severity=severity,
+            limit=limit,
+            offset=offset,
+        )
+
+    @app.get(
+        "/v1/runs/{run_id}/artifacts",
+        response_model=ArtifactListResponseV1,
+        tags=["results"],
+        dependencies=protected,
+    )
+    async def list_artifacts(run_id: UUID) -> ArtifactListResponseV1:
+        state = _require_run(run_store, run_id)
+        return artifacts_response(state, settings.artifact_root)
+
+    @app.get(
+        "/v1/runs/{run_id}/artifacts/{artifact_id}",
+        response_class=FileResponse,
+        tags=["results"],
+        dependencies=protected,
+    )
+    async def download_artifact(
+        run_id: UUID,
+        artifact_id: Annotated[
+            str,
+            Path(pattern=r"^[a-f0-9]{64}$"),
+        ],
+    ) -> FileResponse:
+        state = _require_run(run_store, run_id)
+        record = find_artifact_record(state, artifact_id)
+        if record is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Artifact not found for this run",
+            )
+        artifact_path = resolve_local_artifact(
+            run_id,
+            record,
+            settings.artifact_root,
+        )
+        if artifact_path is None or not artifact_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="Artifact is not materialized on this control plane",
+            )
+        integrity_matches = await asyncio.to_thread(
+            artifact_integrity_matches,
+            artifact_path,
+            record.ref.sha256,
+        )
+        if not integrity_matches:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Artifact integrity verification failed",
+            )
+        return FileResponse(
+            artifact_path,
+            media_type=record.ref.media_type,
+            filename=artifact_path.name,
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @app.post(
         "/v1/runs/{run_id}/cancel",
