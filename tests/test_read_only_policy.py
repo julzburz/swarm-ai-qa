@@ -5,7 +5,11 @@ import unittest
 
 import yaml
 
-from schemas.specialists import AccessibilityAgentOutputV1, BrowserAgentOutputV1
+from schemas.specialists import (
+    AccessibilityAgentOutputV1,
+    BrowserAgentOutputV1,
+    SecurityAgentOutputV1,
+)
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -43,6 +47,12 @@ class ReadOnlyProductPolicyTests(unittest.TestCase):
 
     def test_accessibility_output_cannot_return_generated_code(self) -> None:
         fields = set(AccessibilityAgentOutputV1.model_fields)
+        self.assertNotIn("generated_tests", fields)
+        self.assertNotIn("patch", fields)
+        self.assertNotIn("source_code", fields)
+
+    def test_security_output_cannot_return_generated_code(self) -> None:
+        fields = set(SecurityAgentOutputV1.model_fields)
         self.assertNotIn("generated_tests", fields)
         self.assertNotIn("patch", fields)
         self.assertNotIn("source_code", fields)

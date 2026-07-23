@@ -62,6 +62,51 @@ async def inaccessible() -> str:
     """
 
 
+@app.get("/security-healthy", response_class=HTMLResponse)
+async def security_healthy() -> HTMLResponse:
+    response = HTMLResponse(
+        """
+        <!doctype html><html lang="en"><head><title>Secure demo</title></head>
+        <body><main><h1>Passive security fixture</h1></main></body></html>
+        """
+    )
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=()"
+    response.set_cookie(
+        "fixture_session",
+        "redact-this-value",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@app.get("/security-weak", response_class=HTMLResponse)
+async def security_weak() -> HTMLResponse:
+    response = HTMLResponse(
+        """
+        <!doctype html><html lang="en"><head><title>Weak demo</title></head>
+        <body><main><h1>Deliberately weak passive fixture</h1></main></body></html>
+        """
+    )
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["X-Powered-By"] = "fixture-framework"
+    response.set_cookie(
+        "weak_session",
+        "must-never-appear-in-evidence",
+        secure=False,
+        httponly=False,
+        samesite="none",
+    )
+    return response
+
+
 @app.get("/api/status")
 async def status() -> dict[str, str]:
     return {"status": "ok"}

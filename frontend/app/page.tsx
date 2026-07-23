@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type SourceMode = "repository" | "runtime" | "combined";
 type DepthMode = "quick" | "examination";
-type Domain = "repository" | "functional" | "accessibility";
+type Domain = "repository" | "functional" | "accessibility" | "security";
 type Phase = "configure" | "preview" | "running" | "report";
 
 type PlanTask = {
@@ -143,6 +143,7 @@ export default function QaDirectorPage() {
   const [repositoryDomain, setRepositoryDomain] = useState(true);
   const [functionalDomain, setFunctionalDomain] = useState(true);
   const [accessibilityDomain, setAccessibilityDomain] = useState(true);
+  const [securityDomain, setSecurityDomain] = useState(true);
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -163,6 +164,7 @@ export default function QaDirectorPage() {
     if (hasRepository && repositoryDomain) domains.push("repository");
     if (hasRuntime && functionalDomain) domains.push("functional");
     if (hasRuntime && accessibilityDomain) domains.push("accessibility");
+    if (hasRuntime && securityDomain) domains.push("security");
     return domains;
   }, [
     hasRepository,
@@ -170,6 +172,7 @@ export default function QaDirectorPage() {
     repositoryDomain,
     functionalDomain,
     accessibilityDomain,
+    securityDomain,
   ]);
 
   function buildMission() {
@@ -214,6 +217,8 @@ export default function QaDirectorPage() {
         objective:
           domain === "repository"
             ? "Reconocer componentes y riesgos del repositorio"
+            : domain === "security"
+            ? "Auditar pasivamente HTTPS, TLS, cabeceras, cookies y CORS"
             : domain === "accessibility"
             ? "Detectar barreras WCAG automatizables con axe"
             : "Verificar los journeys aprobados en el navegador",
@@ -424,6 +429,20 @@ export default function QaDirectorPage() {
           manual_criteria_not_checked: string[];
         };
         findings?: Array<{ rule_id?: string }>;
+      }
+    | undefined;
+  const securityOutput = recordsByAgent.security_test_engineer?.output?.output as
+    | {
+        coverage?: {
+          routes_audited: number;
+          responses_observed: number;
+          cookies_observed: number;
+          tls_observed: boolean;
+          policy_version: string;
+          active_exploitation_performed: boolean;
+        };
+        findings?: Array<{ rule_id?: string }>;
+        residual_risks?: string[];
       }
     | undefined;
 
@@ -665,11 +684,19 @@ export default function QaDirectorPage() {
                       <span>Accessibility · axe</span>
                     </label>
                   )}
-                  {["Security", "Performance"].map((domain) => (
-                    <span className="domainChip disabled" key={domain}>
-                      {domain} · próximo
-                    </span>
-                  ))}
+                  {hasRuntime && (
+                    <label className="domainChip">
+                      <input
+                        type="checkbox"
+                        checked={securityDomain}
+                        onChange={(event) => setSecurityDomain(event.target.checked)}
+                      />
+                      <span>Security · pasivo</span>
+                    </label>
+                  )}
+                  <span className="domainChip disabled">
+                    Performance · próximo
+                  </span>
                 </div>
               </div>
 
@@ -798,6 +825,46 @@ export default function QaDirectorPage() {
 
               {phase === "report" && (
                 <div className="reportArea">
+                  {securityOutput?.coverage && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>SECURITY / PASSIVE</span>
+                        <strong>
+                          {securityOutput.findings?.length ?? 0} señales
+                        </strong>
+                      </div>
+                      <div className="componentGrid">
+                        <article className="componentCard">
+                          <small>AUTHORIZED COVERAGE</small>
+                          <strong>
+                            {securityOutput.coverage.routes_audited} rutas
+                          </strong>
+                          <span>
+                            {securityOutput.coverage.responses_observed} respuestas ·{" "}
+                            {securityOutput.coverage.cookies_observed} cookies
+                          </span>
+                        </article>
+                        <article className="componentCard">
+                          <small>SAFETY BOUNDARY</small>
+                          <strong>
+                            {securityOutput.coverage.tls_observed
+                              ? "TLS observado"
+                              : "Sin TLS"}
+                          </strong>
+                          <span>
+                            {securityOutput.coverage.active_exploitation_performed
+                              ? "Explotación ejecutada"
+                              : "0 explotación · 0 cambios"}
+                          </span>
+                        </article>
+                      </div>
+                      <p className="executionSummary">
+                        Auditoría {securityOutput.coverage.policy_version}: HTTPS/TLS,
+                        cabeceras, cookies y CORS observables. No prueba
+                        explotabilidad.
+                      </p>
+                    </section>
+                  )}
                   {accessibilityOutput?.coverage && (
                     <section className="reportBlock">
                       <div className="blockTitle">

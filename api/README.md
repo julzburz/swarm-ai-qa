@@ -80,3 +80,8 @@ con versión, reglas, selectores y resultados. Reporting correlaciona cada findi
 navegación Playwright de la misma URL, pero declara pendientes teclado, lector de pantalla,
 zoom/reflow y estados que requieren interacción. `npm install` dentro de `frontend/` instala la
 versión fijada de axe-core; `SWARM_AXE_SCRIPT_PATH` permite usar otra ubicación del script.
+
+Security ejecuta una auditoria HTTP pasiva sobre las rutas permitidas. Observa HTTPS/TLS,
+cabeceras defensivas, CORS y atributos de cookies sin conservar sus valores. Usa solicitudes
+`GET` acotadas, bloquea redirects fuera del origen o allowlist y no realiza fuzzing,
+explotacion, autenticacion ni cambios en el target.
