@@ -4,7 +4,12 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type SourceMode = "repository" | "runtime" | "combined";
 type DepthMode = "quick" | "examination";
-type Domain = "repository" | "functional" | "accessibility" | "security";
+type Domain =
+  | "repository"
+  | "functional"
+  | "accessibility"
+  | "security"
+  | "performance";
 type Phase = "configure" | "preview" | "running" | "report";
 
 type PlanTask = {
@@ -155,6 +160,7 @@ export default function QaDirectorPage() {
   const [functionalDomain, setFunctionalDomain] = useState(true);
   const [accessibilityDomain, setAccessibilityDomain] = useState(true);
   const [securityDomain, setSecurityDomain] = useState(true);
+  const [performanceDomain, setPerformanceDomain] = useState(true);
   const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -177,6 +183,7 @@ export default function QaDirectorPage() {
     if (hasRuntime && functionalDomain) domains.push("functional");
     if (hasRuntime && accessibilityDomain) domains.push("accessibility");
     if (hasRuntime && securityDomain) domains.push("security");
+    if (hasRuntime && performanceDomain) domains.push("performance");
     return domains;
   }, [
     hasRepository,
@@ -185,9 +192,13 @@ export default function QaDirectorPage() {
     functionalDomain,
     accessibilityDomain,
     securityDomain,
+    performanceDomain,
   ]);
 
   function buildMission() {
+    if (depth === "quick" && selectedDomains.length > 2) {
+      throw new Error("Una tarea rápida admite solo 1 o 2 áreas.");
+    }
     if (!objective.trim()) throw new Error("Describe el objetivo de QA.");
     if (!selectedDomains.length) throw new Error("Selecciona al menos un área.");
 
@@ -233,6 +244,8 @@ export default function QaDirectorPage() {
             ? "Auditar pasivamente HTTPS, TLS, cabeceras, cookies y CORS"
             : domain === "accessibility"
             ? "Detectar barreras WCAG automatizables con axe"
+            : domain === "performance"
+            ? "Medir señales de rendimiento en laboratorio sin generar carga"
             : "Verificar los journeys aprobados en el navegador",
         domains: [domain],
       }));
@@ -474,6 +487,31 @@ export default function QaDirectorPage() {
         };
         findings?: Array<{ rule_id?: string }>;
         residual_risks?: string[];
+      }
+    | undefined;
+  const performanceOutput = recordsByAgent.performance_test_engineer?.output?.output as
+    | {
+        coverage?: {
+          pages_measured: number;
+          repetitions_requested: number;
+          successful_samples: number;
+          failed_samples: number;
+          network_profile: string;
+          viewport: string;
+          inp_measured: false;
+          field_data_compared: false;
+          active_load_test_performed: false;
+        };
+        measurements?: Array<{
+          metric: string;
+          value: number;
+          unit: string;
+          sample_count: number;
+          median?: number;
+          environment_context: string;
+        }>;
+        findings?: Array<{ rule_id?: string }>;
+        baseline_compared?: boolean;
       }
     | undefined;
 
@@ -725,9 +763,16 @@ export default function QaDirectorPage() {
                       <span>Security · pasivo</span>
                     </label>
                   )}
-                  <span className="domainChip disabled">
-                    Performance · próximo
-                  </span>
+                  {hasRuntime && (
+                    <label className="domainChip">
+                      <input
+                        type="checkbox"
+                        checked={performanceDomain}
+                        onChange={(event) => setPerformanceDomain(event.target.checked)}
+                      />
+                      <span>Performance · smoke seguro</span>
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -856,6 +901,74 @@ export default function QaDirectorPage() {
 
               {phase === "report" && (
                 <div className="reportArea">
+                  {performanceOutput?.coverage && (
+                    <section className="reportBlock">
+                      <div className="blockTitle">
+                        <span>PERFORMANCE / LAB SMOKE</span>
+                        <strong>
+                          {performanceOutput.findings?.length ?? 0} señales
+                        </strong>
+                      </div>
+                      <div className="componentGrid">
+                        <article className="componentCard">
+                          <small>ISOLATED COVERAGE</small>
+                          <strong>
+                            {performanceOutput.coverage.pages_measured} rutas
+                          </strong>
+                          <span>
+                            {performanceOutput.coverage.successful_samples} muestras
+                            correctas · {performanceOutput.coverage.failed_samples} fallidas
+                          </span>
+                        </article>
+                        <article className="componentCard">
+                          <small>SAFETY BOUNDARY</small>
+                          <strong>
+                            {performanceOutput.coverage.repetitions_requested} repeticiones
+                          </strong>
+                          <span>1 usuario · 0 carga · INP pendiente</span>
+                        </article>
+                      </div>
+                      <div className="componentGrid">
+                        {performanceOutput.measurements
+                          ?.filter((measurement) =>
+                            [
+                              "largest_contentful_paint",
+                              "cumulative_layout_shift",
+                              "time_to_first_byte",
+                              "transfer_size",
+                            ].includes(measurement.metric),
+                          )
+                          .map((measurement) => (
+                            <article
+                              className="componentCard"
+                              key={`${measurement.metric}-${measurement.environment_context}`}
+                            >
+                              <small>
+                                {measurement.metric.replaceAll("_", " ").toUpperCase()}
+                              </small>
+                              <strong>
+                                {measurement.value.toFixed(
+                                  measurement.unit === "score" ? 3 : 0,
+                                )}{" "}
+                                {measurement.unit}
+                              </strong>
+                              <span>
+                                p75 lab · mediana{" "}
+                                {measurement.median?.toFixed(
+                                  measurement.unit === "score" ? 3 : 0,
+                                )}{" "}
+                                · {measurement.sample_count} muestras
+                              </span>
+                            </article>
+                          ))}
+                      </div>
+                      <p className="executionSummary">
+                        Chromium aislado, viewport {performanceOutput.coverage.viewport},
+                        red nativa. Es una señal de laboratorio; no afirma rendimiento
+                        real ni regresión sin baseline.
+                      </p>
+                    </section>
+                  )}
                   {securityOutput?.coverage && (
                     <section className="reportBlock">
                       <div className="blockTitle">

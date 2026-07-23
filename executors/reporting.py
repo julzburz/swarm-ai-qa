@@ -8,6 +8,7 @@ from schemas.reporting import QaRunReportV1
 from schemas.specialists import (
     AccessibilityAgentOutputV1,
     BrowserAgentOutputV1,
+    PerformanceAgentOutputV1,
     SecurityAgentOutputV1,
 )
 
@@ -30,6 +31,7 @@ class EvidenceReportingExecutor:
         browser_envelope = outputs.get("browser_automation_engineer")
         accessibility_envelope = outputs.get("accessibility_specialist")
         security_envelope = outputs.get("security_test_engineer")
+        performance_envelope = outputs.get("performance_test_engineer")
         if architecture_envelope is None:
             raise ValueError("reporting requires the approved test architecture")
 
@@ -58,6 +60,13 @@ class EvidenceReportingExecutor:
             if security_envelope is not None
             else None
         )
+        performance = (
+            PerformanceAgentOutputV1.model_validate(
+                performance_envelope.output
+            )
+            if performance_envelope is not None
+            else None
+        )
         plan = architecture.test_plan
         artifact_refs = _unique_evidence(
             [
@@ -76,6 +85,8 @@ class EvidenceReportingExecutor:
             executed_domains.add(QualityDomain.ACCESSIBILITY)
         if security is not None:
             executed_domains.add(QualityDomain.SECURITY)
+        if performance is not None:
+            executed_domains.add(QualityDomain.PERFORMANCE)
         completed_objectives = [
             objective
             for objective in plan.coverage_objectives
@@ -266,6 +277,54 @@ class EvidenceReportingExecutor:
                         evidence_refs=evidence,
                     )
                 )
+        if performance is not None:
+            for finding in performance.findings:
+                matching_journeys = (
+                    [
+                        journey
+                        for journey in browser.journeys
+                        if journey.environment_url
+                        in finding.affected_locations
+                    ]
+                    if browser is not None
+                    else []
+                )
+                evidence = _unique_evidence(
+                    [
+                        *finding.evidence_refs,
+                        *repository_evidence,
+                        *[
+                            evidence
+                            for journey in matching_journeys
+                            for evidence in journey.evidence_refs
+                        ],
+                    ]
+                )
+                if matching_journeys:
+                    reason = (
+                        "Lab performance signal correlated with Playwright "
+                        "navigation evidence for the exact allowlisted URL. "
+                        "This is not a field-data or regression claim."
+                    )
+                elif correlation_context:
+                    reason = (
+                        "Lab performance signal correlated with "
+                        f"{correlation_context}; no route-to-source causality "
+                        "or regression is asserted."
+                    )
+                else:
+                    reason = (
+                        "Lab performance signal preserved without claiming "
+                        "field performance or a regression."
+                    )
+                correlated.append(
+                    CorrelatedFindingV1(
+                        primary_finding=finding,
+                        final_confidence=finding.confidence,
+                        correlation_reason=reason,
+                        evidence_refs=evidence,
+                    )
+                )
 
         residual_risks = list(plan.residual_risks)
         summary_parts: list[str] = []
@@ -310,6 +369,13 @@ class EvidenceReportingExecutor:
                     "source, dependency and secret scans were not executed"
                 )
             residual_risks.extend(security.residual_risks)
+        if performance is not None:
+            summary_parts.append(
+                f"Performance measured {performance.coverage.pages_measured} "
+                f"page(s) with {performance.coverage.successful_samples} "
+                "isolated single-user lab sample(s); no load test was performed"
+            )
+            residual_risks.extend(performance.residual_risks)
         if repository is not None and browser is not None:
             residual_risks.append(
                 "Repository and runtime evidence are correlated by mission and "

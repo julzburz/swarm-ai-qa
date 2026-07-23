@@ -139,8 +139,23 @@ class PerformanceAgentOutputV1(StrictModel):
     task_id: UUID
     measurements: list[PerformanceMeasurementV1] = Field(min_length=1)
     findings: list[FindingV1] = Field(default_factory=list)
+    coverage: "PerformanceCoverageV1"
     baseline_compared: bool = False
     tool_executions: list[ToolExecutionResultV1] = Field(min_length=1)
+    residual_risks: list[NonEmptyStr] = Field(default_factory=list)
+
+
+class PerformanceCoverageV1(StrictModel):
+    schema_version: Literal["1.0"] = "1.0"
+    pages_measured: int = Field(ge=0)
+    repetitions_requested: int = Field(gt=0)
+    successful_samples: int = Field(ge=0)
+    failed_samples: int = Field(ge=0)
+    network_profile: NonEmptyStr
+    viewport: NonEmptyStr
+    inp_measured: Literal[False] = False
+    field_data_compared: Literal[False] = False
+    active_load_test_performed: Literal[False] = False
 
 
 class ApiOperationV1(StrictModel):

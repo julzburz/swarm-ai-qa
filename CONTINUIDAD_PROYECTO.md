@@ -24,6 +24,8 @@ La fundacion ejecutable incluye:
 - correlacion Browser + Accessibility por URL autorizada;
 - worker HTTP/TLS y executor real de Security Test Engineer pasivo;
 - correlacion Browser + Security por URL autorizada, sin afirmar explotabilidad;
+- worker Chromium y executor real de Performance Test Engineer single-user;
+- correlacion Browser + Performance por URL autorizada, sin afirmar regresion;
 - aplicacion web demo local y determinista;
 - frontend Next.js de QA Director conectado al control plane;
 - deteccion de monorepos y componentes con impacto de cambio por componente;
@@ -31,11 +33,10 @@ La fundacion ejecutable incluye:
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
 - consulta filtrable de findings y descarga de artifacts con verificacion SHA-256;
-- 72 pruebas automatizadas verdes.
+- 76 pruebas automatizadas verdes.
 
-La carpeta no estaba inicializada como repositorio Git al realizar esta actualizacion. Si se
-trabaja mediante una carpeta sincronizada, verificar que todos los archivos hayan terminado
-de sincronizar antes de cambiar de computadora. No copiar ni publicar `.env` con secretos.
+El proyecto esta versionado en `https://github.com/julzburz/swarm-ai-qa`. La rama estable es
+`main`; no copiar ni publicar `.env`, `.data/` ni credenciales.
 
 ## Actualizacion implementada: FastAPI control plane
 
@@ -340,9 +341,9 @@ Para arrancar un run, `POST /v1/runs` recibe:
 }
 ```
 
-Este request es aceptado por `api.github_factory:create_github_app`. Misiones que tambien
-soliciten security, browser, API, performance o accessibility devolveran `503` hasta que sus
-executors reales sean implementados.
+Este request es aceptado por `api.github_factory:create_github_app`. Para misiones runtime de
+Browser, Accessibility, Security o Performance se usa
+`api.automation_factory:create_automation_app`. API Test Engineer sigue pendiente.
 
 ## Verificacion realizada
 
@@ -352,10 +353,10 @@ Comando ejecutado:
 python -m unittest discover -s tests -v
 ```
 
-Resultado al 22 de julio de 2026:
+Resultado al 23 de julio de 2026:
 
 ```text
-Ran 61 tests
+Ran 76 tests
 OK
 ```
 
@@ -370,6 +371,10 @@ Cobertura funcional de las nuevas pruebas:
 - ejecucion completa, consulta de estado, historial y SSE;
 - escaneo axe real sobre paginas sanas y con barreras deliberadas;
 - mision Accessibility aislada y correlacion Browser + Accessibility;
+- Performance real con tres contextos Chromium aislados por ruta;
+- metricas lab LCP, CLS, TTFB, carga, transferencia y recursos;
+- mision Performance aislada y correlacion Browser + Performance;
+- evidencia Performance descargable con verificacion SHA-256;
 - cancelacion de un run activo.
 - uso exclusivo de `GET` y header de version GitHub;
 - repositorios privados rechazados antes de acceder a red cuando falta token;
@@ -424,17 +429,40 @@ La aplicacion demo tambien se valido en el navegador integrado:
 /broken  -> console error="demo checkout initialization failed"
 ```
 
+## Actualizacion implementada: Performance smoke seguro
+
+Performance Test Engineer ya esta registrado en la factory de automatizacion:
+
+- ejecuta tres muestras por ruta en contextos Chromium nuevos;
+- usa solamente navegacion `GET/HEAD`, mismo origen, allowlist y presupuesto acotado;
+- mide LCP, CLS, TTFB, DOMContentLoaded, load, FCP, transferencia y recursos;
+- informa p75 de laboratorio, mediana, varianza y contexto de ejecucion;
+- nunca ejecuta carga, stress o concurrencia;
+- no mide INP porque no hay una interaccion representativa;
+- no declara regresion sin baseline;
+- guarda JSON redactado bajo `.data/artifacts/`, descargable por ID opaco y SHA-256 verificado.
+
+Validacion Neon real:
+
+```text
+run_id=81d821ba-2d6e-4350-9d9c-9870a0963cb1
+target=https://example.com/
+samples=3/3
+status=completed
+restored_after_backend_restart=true
+artifact_sha256_verified=true
+```
+
 ## Limitaciones conocidas
 
 - Hay executors reales para Repository Analyst, Test Architect, Browser Automation,
-  Accessibility y Reporting.
+  Accessibility, Security, Performance y Reporting.
 - La factory generica `api.app:create_app` sigue sin executors; para GitHub se debe usar
   `api.github_factory:create_github_app`.
-- Todavia no existen endpoints de projects, targets, findings, artifacts o GitHub Checks.
+- Todavia no existen endpoints de projects, targets o GitHub Checks.
 - La autenticacion actual usa una sola clave Bearer; aun no existen usuarios, sesiones ni roles.
 - El frontend tiene historial de runs, pero aun no tiene listado persistente de proyectos.
-- La UI habilita Repository, Browser Functional y Accessibility; Security y Performance se
-  muestran explicitamente como pendientes.
+- La UI habilita Repository, Browser Functional, Accessibility, Security y Performance.
 - Browser Automation es navigation-only: todavia no ejecuta clicks, formularios ni login.
 - Accessibility es automatizado con axe; teclado, lector de pantalla, zoom/reflow y estados
   interactivos permanecen como gaps manuales visibles.
@@ -448,7 +476,10 @@ La aplicacion demo tambien se valido en el navegador integrado:
   como `unmapped` cuando no pertenecen claramente a ningun componente.
 - Las rutas candidatas solo cubren convenciones estaticas Next.js; no se inventan parametros
   para rutas dinamicas.
-- Los artefactos usan filesystem local; aun no existe adapter S3 ni endpoint de descarga.
+- Los artefactos usan filesystem local; existe descarga verificada, pero aun no existe adapter
+  S3.
+- Performance es laboratorio single-user: no sustituye datos de usuarios reales, no mide INP
+  y no prueba concurrencia.
 - Los runs activos viven como tareas del proceso; el checkpoint es durable, pero reanudar una
   ejecucion interrumpida tras reiniciar el servidor aun no esta implementado.
 - La ruta separada `/events/stream` se eligio para no mezclar respuesta JSON y SSE en el mismo
@@ -456,16 +487,15 @@ La aplicacion demo tambien se valido en el navegador integrado:
 
 ## Siguiente corte recomendado
 
-La inteligencia multicomponente, QA Director, Neon, autenticación, historial y Accessibility ya
-están implementados. El siguiente corte recomendado amplía la entrega de evidencia:
+El siguiente corte recomendado es completar el especialista funcional sin ampliar el riesgo:
 
-1. Agregar endpoints dedicados de findings y artefactos para el dashboard.
-2. Incorporar Security básico con comprobaciones pasivas y no destructivas.
-3. Después incorporar Performance smoke de un solo usuario.
-4. Diseñar usuarios y roles solo si el proyecto evoluciona después del hackathon.
+1. Agregar acciones Browser de lectura para clicks y formularios de prueba solo en staging.
+2. Mantener produccion en navegacion pasiva salvo autorizacion y cuenta de prueba explicitas.
+3. Incorporar API Test Engineer para contratos OpenAPI y operaciones `GET` seguras.
+4. Preparar despliegue publico con `SWARM_API_KEY`; despues evaluar usuarios y roles.
 
-Trabajo complementario pendiente: endpoints de findings y artefactos, persistencia/reanudacion
-de tareas tras reiniciar el proceso y almacenamiento externo de artefactos.
+Trabajo complementario pendiente: reanudacion de tareas tras reiniciar el proceso y
+almacenamiento externo de artefactos.
 
 ## Referencias principales
 

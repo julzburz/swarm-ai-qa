@@ -2,8 +2,8 @@
 
 Next.js App Router frontend for the hackathon control plane. It exposes only the current real
 capabilities: public GitHub repository inspection, bounded functional browser journeys,
-automated accessibility analysis with axe-core and passive runtime security inspection.
-Performance appears as unavailable instead of simulating an agent.
+automated accessibility analysis with axe-core, passive runtime security inspection and
+isolated single-user performance smoke measurements.
 
 ## Run locally
 
@@ -33,6 +33,10 @@ coverage and the manual criteria that were not verified.
 Security can be selected for runtime targets and reports HTTPS/TLS, response-header, cookie and
 CORS signals. It uses allowlisted `GET` requests only, redacts cookie values and never exploits
 the evaluated application.
+Performance can be selected for a runtime target. It runs three cold Chromium contexts per
+allowlisted route and reports lab LCP, CLS, TTFB, loading, transfer and resource metrics. It
+never performs load or stress testing, does not measure INP, and does not label a signal as a
+regression without an explicit baseline.
 
 Completed reports also load the run artifact catalog. Materialized evidence can be downloaded
 through the server-side `/control-plane` proxy, so an enabled API key remains outside the
