@@ -159,6 +159,9 @@ Un sistema multiagente puede separar contextos, ejecutar herramientas especializ
 
 - Ejecutar auditorías funcionales, seguridad web básica, rendimiento y accesibilidad.
 
+- Descubrir OpenAPI dentro del allowlist y validar operaciones GET/HEAD sin credenciales,
+  parámetros inventados ni mutaciones.
+
 - Diseñar una matriz de casos trazable con riesgo, pasos, resultado esperado y BDD/Gherkin.
 
 - Mostrar actividad de agentes en tiempo real.
@@ -668,6 +671,7 @@ Report Analyst crea pasos reproducibles y evidencia enlazada
 | FR-020 | Custom MCP                 | Registrar MCP privado enterprise con aprobación                       | P2            |
 | FR-021 | Self-hosted runner         | Ejecutar workers dentro de red del cliente                            | P2            |
 | FR-022 | Billing                    | Planes, límites, metering y facturación                               | P2            |
+| FR-023 | API contract testing       | Descubrir OpenAPI y validar GET/HEAD sin mutaciones                    | P0            |
 
 # 18. Requisitos no funcionales
 

@@ -2,8 +2,8 @@
 
 Next.js App Router frontend for the hackathon control plane. It exposes only the current real
 capabilities: public GitHub repository inspection, bounded functional browser journeys,
-automated accessibility analysis with axe-core, passive runtime security inspection and
-isolated single-user performance smoke measurements.
+OpenAPI plus safe GET/HEAD validation, automated accessibility analysis with axe-core, passive
+runtime security inspection and isolated single-user performance smoke measurements.
 
 Completed runs include Test Design Studio: a compact risk-linked matrix with preconditions,
 steps, expected results and Spanish BDD/Gherkin. Automated cases receive only evidence-backed
@@ -14,6 +14,11 @@ option. It permits only bounded same-origin link clicks and GET forms filled wit
 non-sensitive values. Production disables the option. The report shows executed links, fields,
 GET submissions and blocked interactions, while confirming that mutating requests and destructive
 actions were not allowed.
+
+API can be selected for a runtime target. QA Director shows whether an OpenAPI contract was
+discovered, safe and mutating operation counts, GET/HEAD execution, JSON Schema validation and
+blocked operations. When no contract exists inside the allowlist, the agent reports an observed
+GET/HEAD smoke instead of pretending contract coverage. Response body values are never persisted.
 
 ## Run locally
 

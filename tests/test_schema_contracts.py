@@ -29,6 +29,7 @@ from schemas.release import (
     ReleaseDecisionV1,
     ScoreComponentV1,
 )
+from schemas.specialists import ApiAgentOutputV1
 from schemas.common import BudgetV1
 
 
@@ -272,7 +273,14 @@ class PlanningAndReleaseContractTests(unittest.TestCase):
             )
 
     def test_core_models_export_json_schema(self) -> None:
-        for model in (UserMissionRequestV1, ProjectProfileV1, TestPlanV1, FindingV1, ReleaseDecisionV1):
+        for model in (
+            UserMissionRequestV1,
+            ProjectProfileV1,
+            TestPlanV1,
+            FindingV1,
+            ApiAgentOutputV1,
+            ReleaseDecisionV1,
+        ):
             generated = model.model_json_schema()
             self.assertEqual(generated["type"], "object")
 

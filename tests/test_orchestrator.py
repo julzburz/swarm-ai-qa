@@ -325,6 +325,7 @@ class QaDirectorTests(unittest.TestCase):
 
         self.assertIn("security_test_engineer", plan.selected_agents)
         self.assertNotIn("browser_automation_engineer", plan.selected_agents)
+        self.assertNotIn("api_test_engineer", plan.selected_agents)
         self.assertNotIn("accessibility_specialist", plan.selected_agents)
 
 

@@ -21,10 +21,12 @@ a real quality-engineering team:
 3. **Test Architect** converts evidence and risk into approved runtime journeys.
 4. **Browser Automation Engineer** executes bounded Playwright navigation and opt-in safe
    functional flows in staging/sandbox.
-5. **Accessibility Specialist** runs axe-core against approved pages.
-6. **Security Test Engineer** passively audits authorized HTTP/TLS responses.
-7. **Performance Test Engineer** measures isolated single-user lab performance signals.
-8. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
+5. **API Test Engineer** discovers allowlisted OpenAPI contracts and validates safe GET/HEAD
+   operations.
+6. **Accessibility Specialist** runs axe-core against approved pages.
+7. **Security Test Engineer** passively audits authorized HTTP/TLS responses.
+8. **Performance Test Engineer** measures isolated single-user lab performance signals.
+9. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
 
 ```mermaid
 flowchart LR
@@ -32,12 +34,14 @@ flowchart LR
     D --> R["Repository Analyst"]
     R --> T["Test Architect"]
     T --> B["Browser Automation"]
+    T --> I["API Contract + Safe GET"]
     T --> A["Accessibility / axe"]
     T --> S["Passive Security"]
     T --> P["Performance Lab Smoke"]
     R --> E["Evidence & Reporting"]
     T --> E
     B --> E
+    I --> E
     A --> E
     S --> E
     P --> E
@@ -76,6 +80,10 @@ addresses.
   non-sensitive data, capped at three interactions per route.
 - Interactive policy blocks POST/PUT/PATCH/DELETE, sensitive fields, logout, purchases and
   destructive actions; production remains passive.
+- Allowlisted OpenAPI discovery with structural validation and conventional contract locations.
+- Parameterless GET/HEAD contract execution with documented status and JSON Schema validation.
+- API policy blocks mutating methods and required parameters, uses no credentials, and persists
+  no response body values.
 - Real axe-core WCAG A/AA scans with redacted JSON evidence and explicit manual coverage gaps.
 - Passive HTTPS/TLS, security-header, cookie and CORS inspection with redacted evidence.
 - Security execution limited to allowlisted routes, bounded `GET` requests and no exploitation.
@@ -97,7 +105,7 @@ addresses.
 - **Control plane:** Python, FastAPI, Pydantic
 - **Orchestration:** asynchronous dependency graph, retries, cancellation and event stream
 - **Repository intelligence:** GitHub REST API, read-only
-- **Runtime QA:** Playwright + Chromium + axe-core + bounded HTTPX inspection
+- **Runtime QA:** Playwright + Chromium + axe-core + HTTPX + JSON Schema
 - **Frontend:** Next.js App Router, React, TypeScript
 - **Persistence:** automatic Neon PostgreSQL selection with local SQLite fallback
 
@@ -177,7 +185,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 83 tests
+Ran 88 tests
 OK
 ```
 
@@ -211,6 +219,8 @@ workers/       Bounded tool workers
 - Bearer authentication is single-tenant; user accounts and role-based access are not implemented.
 - Browser interaction is intentionally narrow: no login, authenticated sessions, POST forms,
   payments, account changes or destructive actions. Production is navigation-only.
+- API execution is limited to public GET/HEAD operations without required parameters; authenticated
+  contracts, GraphQL, required test data and mutation behavior remain unverified.
 - Screenshots and traces must not contain real sensitive user data.
 - Performance is a small laboratory smoke, not field telemetry: it does not measure INP,
   representative user conditions or regression without a baseline.

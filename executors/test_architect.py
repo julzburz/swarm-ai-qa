@@ -131,6 +131,13 @@ def _mission_domains(context: AgentExecutionContextV1) -> set[QualityDomain]:
     domains = set(mission.selected_domains)
     for job in mission.requested_jobs:
         domains.update(job.domains)
+    if mission.runtime_target is None:
+        domains -= {
+            QualityDomain.FUNCTIONAL,
+            QualityDomain.API,
+            QualityDomain.ACCESSIBILITY,
+            QualityDomain.PERFORMANCE,
+        }
     return domains or {QualityDomain.REPOSITORY}
 
 
@@ -142,6 +149,7 @@ def _critical_journeys(
     target = context.mission.runtime_target
     if target is None or not {
         QualityDomain.FUNCTIONAL,
+        QualityDomain.API,
         QualityDomain.ACCESSIBILITY,
     } & domains:
         return []
@@ -548,11 +556,11 @@ def _design_test_cases(
                     ),
                 ]
             )
-        if QualityDomain.API in domains:
+        if QualityDomain.API in domains and index == 1:
             cases.append(
                 TestCaseDesignV1(
-                    case_id=f"TC-API-{suffix}",
-                    title=f"Descubrir y validar contrato API asociado a {path}",
+                    case_id="TC-API-001",
+                    title="Descubrir y validar el contrato API autorizado",
                     domain=QualityDomain.API,
                     test_type="api",
                     priority="medium",

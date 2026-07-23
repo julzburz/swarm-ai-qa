@@ -12,6 +12,7 @@ from schemas.execution import (
 from schemas.reporting import QaRunReportV1
 from schemas.specialists import (
     AccessibilityAgentOutputV1,
+    ApiAgentOutputV1,
     BrowserAgentOutputV1,
     PerformanceAgentOutputV1,
     SecurityAgentOutputV1,
@@ -34,6 +35,7 @@ class EvidenceReportingExecutor:
         architecture_envelope = outputs.get("test_architect")
         repository_envelope = outputs.get("repository_analyst")
         browser_envelope = outputs.get("browser_automation_engineer")
+        api_envelope = outputs.get("api_test_engineer")
         accessibility_envelope = outputs.get("accessibility_specialist")
         security_envelope = outputs.get("security_test_engineer")
         performance_envelope = outputs.get("performance_test_engineer")
@@ -51,6 +53,11 @@ class EvidenceReportingExecutor:
         browser = (
             BrowserAgentOutputV1.model_validate(browser_envelope.output)
             if browser_envelope is not None
+            else None
+        )
+        api = (
+            ApiAgentOutputV1.model_validate(api_envelope.output)
+            if api_envelope is not None
             else None
         )
         accessibility = (
@@ -86,6 +93,8 @@ class EvidenceReportingExecutor:
             executed_domains.add(QualityDomain.REPOSITORY)
         if browser is not None:
             executed_domains.add(QualityDomain.FUNCTIONAL)
+        if api is not None:
+            executed_domains.add(QualityDomain.API)
         if accessibility is not None:
             executed_domains.add(QualityDomain.ACCESSIBILITY)
         if security is not None:
@@ -282,6 +291,59 @@ class EvidenceReportingExecutor:
                         evidence_refs=evidence,
                     )
                 )
+        if api is not None:
+            for finding in api.findings:
+                matching_journeys = (
+                    [
+                        journey
+                        for journey in browser.journeys
+                        if any(
+                            _same_location(
+                                journey.environment_url,
+                                location,
+                            )
+                            for location in finding.affected_locations
+                        )
+                    ]
+                    if browser is not None
+                    else []
+                )
+                evidence = _unique_evidence(
+                    [
+                        *finding.evidence_refs,
+                        *repository_evidence,
+                        *[
+                            evidence
+                            for journey in matching_journeys
+                            for evidence in journey.evidence_refs
+                        ],
+                    ]
+                )
+                if matching_journeys:
+                    reason = (
+                        "API contract finding correlated with Playwright "
+                        "navigation evidence for the same allowlisted URL. "
+                        "No route-to-source causality is asserted."
+                    )
+                elif correlation_context:
+                    reason = (
+                        "API contract finding correlated with "
+                        f"{correlation_context}; no route-to-source causality "
+                        "is asserted."
+                    )
+                else:
+                    reason = (
+                        "API contract finding preserved from a bounded "
+                        "GET/HEAD validation without unsupported causality."
+                    )
+                correlated.append(
+                    CorrelatedFindingV1(
+                        primary_finding=finding,
+                        final_confidence=finding.confidence,
+                        correlation_reason=reason,
+                        evidence_refs=evidence,
+                    )
+                )
         if performance is not None:
             for finding in performance.findings:
                 matching_journeys = (
@@ -346,8 +408,18 @@ class EvidenceReportingExecutor:
             )
             residual_risks.append(
                 "Browser coverage is limited to explicitly allowlisted, "
-                "navigation-only journeys."
+                "bounded journeys and opt-in safe staging interactions."
             )
+        if api is not None:
+            summary_parts.append(
+                f"API QA discovered contract="
+                f"{api.coverage.contract_discovered}, executed "
+                f"{api.coverage.executed_operations} bounded GET/HEAD "
+                f"operation(s), validated "
+                f"{api.coverage.response_schemas_validated} response "
+                "schema(s), and performed zero mutating requests"
+            )
+            residual_risks.extend(api.residual_risks)
         if accessibility is not None:
             summary_parts.append(
                 f"axe-core scanned {accessibility.coverage.pages_scanned} "
@@ -391,6 +463,7 @@ class EvidenceReportingExecutor:
             outputs,
             repository=repository,
             browser=browser,
+            api=api,
             accessibility=accessibility,
             security=security,
             performance=performance,
@@ -453,6 +526,7 @@ def _test_case_results(
     *,
     repository,
     browser,
+    api,
     accessibility,
     security,
     performance,
@@ -613,6 +687,52 @@ def _test_case_results(
                     evidence_refs=journey.evidence_refs,
                     finding_ids=[
                         finding.finding_id for finding in related
+                    ],
+                )
+            )
+            continue
+
+        if test_case.domain == QualityDomain.API:
+            evidence = _unique_evidence(envelope.evidence_refs)
+            if api is None or not evidence:
+                status = "blocked"
+                observation = (
+                    "API Test Engineer no proporcionó evidencia material."
+                )
+            elif api.findings:
+                status = "failed"
+                observation = (
+                    f"API QA ejecutó "
+                    f"{api.coverage.executed_operations} operación(es) "
+                    f"GET/HEAD y encontró {len(api.findings)} "
+                    "incumplimiento(s) de contrato."
+                )
+            elif api.coverage.executed_operations == 0:
+                status = "blocked"
+                observation = (
+                    "No existían operaciones GET/HEAD sin parámetros "
+                    "obligatorios que pudieran ejecutarse dentro del "
+                    "allowlist."
+                )
+            else:
+                status = "passed"
+                observation = (
+                    f"API QA ejecutó "
+                    f"{api.coverage.executed_operations} operación(es) "
+                    f"GET/HEAD; validó "
+                    f"{api.coverage.response_schemas_validated} schema(s) "
+                    "sin ejecutar solicitudes mutantes."
+                )
+            results.append(
+                TestCaseExecutionV1(
+                    case_id=test_case.case_id,
+                    status=status,
+                    observation=observation,
+                    executed_by=test_case.assigned_agent,
+                    evidence_refs=evidence,
+                    finding_ids=[
+                        finding.finding_id
+                        for finding in (api.findings if api else [])
                     ],
                 )
             )

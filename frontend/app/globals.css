@@ -509,6 +509,13 @@ button {
   background: #f1f0eb;
 }
 
+.fieldHint {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .safeFlowToggle {
   grid-column: 1 / -1;
   display: flex;

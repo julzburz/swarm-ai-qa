@@ -22,6 +22,8 @@ La fundacion ejecutable incluye:
 - executor real de Browser Automation Engineer;
 - flujos funcionales seguros opt-in para staging/sandbox con clicks internos y formularios GET
   sinteticos; produccion permanece pasiva;
+- worker HTTP API con descubrimiento OpenAPI allowlisted, validacion JSON Schema y fallback GET;
+- executor real de API Test Engineer sin credenciales ni requests mutantes;
 - worker axe-core y executor real de Accessibility Specialist;
 - correlacion Browser + Accessibility por URL autorizada;
 - worker HTTP/TLS y executor real de Security Test Engineer pasivo;
@@ -37,7 +39,7 @@ La fundacion ejecutable incluye:
 - autenticacion Bearer opcional y proxy Next.js que conserva la clave en el servidor;
 - historial navegable de runs reales desde QA Director;
 - consulta filtrable de findings y descarga de artifacts con verificacion SHA-256;
-- 83 pruebas automatizadas verdes.
+- 88 pruebas automatizadas verdes.
 
 El proyecto esta versionado en `https://github.com/julzburz/swarm-ai-qa`. La rama estable es
 `main`; no copiar ni publicar `.env`, `.data/` ni credenciales.
@@ -136,6 +138,22 @@ sinteticos y envio de formularios GET. La politica registra y omite POST, campos
 logout, compras, pagos, rutas externas y acciones destructivas. El reporte separa las
 interacciones ejecutadas de las bloqueadas. Produccion rechaza el opt-in en el contrato.
 
+## Actualizacion implementada: API Test Engineer
+
+El dominio `api` ya tiene worker y executor reales:
+
+- busca OpenAPI/Swagger solamente en ubicaciones que pertenecen al allowlist;
+- valida la estructura del contrato y deriva sus operaciones;
+- ejecuta solo `GET/HEAD` publicos sin parametros obligatorios;
+- valida status documentados y JSON Schema cuando existe;
+- bloquea POST, PUT, PATCH, DELETE, parametros requeridos, redirects externos y exceso de budget;
+- no usa credenciales, no inventa test data y no persiste valores de response bodies;
+- si no existe contrato, ejecuta un smoke GET/HEAD observado y lo declara sin simular cobertura;
+- genera artifact JSON redactado, findings reproducibles y resultado trazable en Test Design.
+
+La fixture `demo_web` contiene un endpoint correcto, un schema deliberadamente inconsistente y un
+POST documentado. La prueba real confirma que detecta el mismatch y que el POST nunca se ejecuta.
+
 ## Actualizacion implementada: seguridad de targets y correlacion del enjambre
 
 El flujo combinado ahora conserva dependencias directas entre todos los agentes:
@@ -223,6 +241,7 @@ La factory de automatizacion registra un especialista de accesibilidad respaldad
 - `api/automation_factory.py`: factory compuesta GitHub + Browser + Accessibility.
 - `adapters/github/`: cliente REST, modelos internos y limites read-only.
 - `workers/browser/`: puerto, modelos y worker Playwright.
+- `workers/api/`: descubrimiento OpenAPI y validacion GET/HEAD acotada.
 - `workers/accessibility/`: contratos y worker Playwright + axe-core.
 - `executors/repository.py`: perfil tecnologico, contexto e impacto de PR.
 - `executors/test_architect.py`: estrategia y cobertura basadas en evidencia.
@@ -352,8 +371,8 @@ Para arrancar un run, `POST /v1/runs` recibe:
 ```
 
 Este request es aceptado por `api.github_factory:create_github_app`. Para misiones runtime de
-Browser, Accessibility, Security o Performance se usa
-`api.automation_factory:create_automation_app`. API Test Engineer sigue pendiente.
+Browser, API, Accessibility, Security o Performance se usa
+`api.automation_factory:create_automation_app`.
 
 ## Verificacion realizada
 
@@ -366,7 +385,7 @@ python -m unittest discover -s tests -v
 Resultado al 23 de julio de 2026:
 
 ```text
-Ran 76 tests
+Ran 88 tests
 OK
 ```
 
@@ -507,18 +526,37 @@ El resultado `blocked` es deliberadamente honesto: el target reservado no ofrece
 same-origin ni un formulario GET seguro. La ejecucion real positiva se valida contra
 `demo_web` con Chromium dentro de `test_safe_staging_mode_executes_only_bounded_read_interactions`.
 
+Validacion Neon del API Test Engineer:
+
+```text
+run_id=231b6a45-57c2-4614-b0a5-f721d155b59b
+target=https://example.com/
+environment=production
+contract_discovered=false
+observed_get_operations_executed=1
+unsafe_requests_performed=false
+TC-API-001=passed
+api_case_evidence_refs=1
+```
+
+El agente no encontro OpenAPI dentro del allowlist y lo declaro expresamente. Ejecuto un unico
+GET observado, con artifact redactado, sin credenciales ni mutaciones. La validacion OpenAPI
+positiva y el mismatch de schema se cubren de forma real contra `demo_web`.
+
 ## Limitaciones conocidas
 
-- Hay executors reales para Repository Analyst, Test Architect, Browser Automation,
+- Hay executors reales para Repository Analyst, Test Architect, Browser Automation, API,
   Accessibility, Security, Performance y Reporting.
 - La factory generica `api.app:create_app` sigue sin executors; para GitHub se debe usar
   `api.github_factory:create_github_app`.
 - Todavia no existen endpoints de projects, targets o GitHub Checks.
 - La autenticacion actual usa una sola clave Bearer; aun no existen usuarios, sesiones ni roles.
 - El frontend tiene historial de runs, pero aun no tiene listado persistente de proyectos.
-- La UI habilita Repository, Browser Functional, Accessibility, Security y Performance.
+- La UI habilita Repository, Browser Functional, API, Accessibility, Security y Performance.
 - Browser Automation ejecuta clicks internos y formularios GET sinteticos solo con opt-in en
   staging/sandbox; login, POST, pagos, logout, cambios de cuenta y destruccion siguen prohibidos.
+- API Test Engineer no cubre autenticacion, GraphQL, parametros obligatorios ni mutaciones; solo
+  ejecuta operaciones publicas GET/HEAD y nunca persiste valores del body.
 - Accessibility es automatizado con axe; teclado, lector de pantalla, zoom/reflow y estados
   interactivos permanecen como gaps manuales visibles.
 - La redaccion textual cubre patrones comunes, pero las capturas visuales todavia no tienen un
@@ -542,12 +580,12 @@ same-origin ni un formulario GET seguro. La ejecucion real positiva se valida co
 
 ## Siguiente corte recomendado
 
-El siguiente corte recomendado es completar el especialista funcional sin ampliar el riesgo:
+El siguiente corte recomendado es preparar la demostracion publica sin ampliar el riesgo:
 
-1. Incorporar API Test Engineer para contratos OpenAPI y operaciones `GET` seguras.
-2. Preparar despliegue publico con `SWARM_API_KEY`; despues evaluar usuarios y roles.
+1. Configurar `SWARM_API_KEY` y desplegar frontend + control plane con HTTPS.
+2. Externalizar artifacts a object storage antes de usar replicas efimeras.
 3. Agregar redaccion visual de screenshots/traces antes de soportar sesiones autenticadas.
-4. Mantener produccion en navegacion pasiva.
+4. Mantener produccion en navegacion pasiva y API en GET/HEAD publico.
 
 Trabajo complementario pendiente: reanudacion de tareas tras reiniciar el proceso y
 almacenamiento externo de artefactos.
