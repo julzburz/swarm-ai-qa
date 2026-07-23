@@ -73,8 +73,8 @@ aun faltan.
 
 ## GitHub + Playwright + axe automation
 
-La factory compuesta agrega Browser Automation Engineer, Accessibility Specialist y Security
-Test Engineer para misiones runtime:
+La factory compuesta agrega Browser Automation Engineer, Accessibility Specialist, Security
+Test Engineer y Performance Test Engineer para misiones runtime:
 
 ```powershell
 python -m playwright install chromium
@@ -98,3 +98,8 @@ Security ejecuta una auditoria HTTP pasiva sobre las rutas permitidas. Observa H
 cabeceras defensivas, CORS y atributos de cookies sin conservar sus valores. Usa solicitudes
 `GET` acotadas, bloquea redirects fuera del origen o allowlist y no realiza fuzzing,
 explotacion, autenticacion ni cambios en el target.
+
+Performance ejecuta tres muestras de laboratorio en contextos Chromium nuevos por cada ruta
+permitida. Conserva LCP, CLS, TTFB, tiempos de carga, transferencia y cantidad de recursos con
+mediana, p75 y varianza. Es siempre una prueba single-user de lectura: no genera carga, no mide
+INP ni afirma una regresion sin baseline.

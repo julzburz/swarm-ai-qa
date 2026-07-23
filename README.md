@@ -22,7 +22,8 @@ a real quality-engineering team:
 4. **Browser Automation Engineer** executes bounded Playwright navigation.
 5. **Accessibility Specialist** runs axe-core against approved pages.
 6. **Security Test Engineer** passively audits authorized HTTP/TLS responses.
-7. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
+7. **Performance Test Engineer** measures isolated single-user lab performance signals.
+8. **Evidence & Reporting Analyst** correlates outputs without inventing findings or causality.
 
 ```mermaid
 flowchart LR
@@ -32,11 +33,13 @@ flowchart LR
     T --> B["Browser Automation"]
     T --> A["Accessibility / axe"]
     T --> S["Passive Security"]
+    T --> P["Performance Lab Smoke"]
     R --> E["Evidence & Reporting"]
     T --> E
     B --> E
     A --> E
     S --> E
+    P --> E
     E --> Q["Evidence-backed QA report"]
 ```
 
@@ -68,8 +71,13 @@ addresses.
 - Real axe-core WCAG A/AA scans with redacted JSON evidence and explicit manual coverage gaps.
 - Passive HTTPS/TLS, security-header, cookie and CORS inspection with redacted evidence.
 - Security execution limited to allowlisted routes, bounded `GET` requests and no exploitation.
+- Three isolated Chromium lab samples per performance route, with LCP, CLS, TTFB, load timing,
+  transfer size, variance and execution context.
+- Performance execution is single-user and read-only: no load, stress, INP or regression claim
+  without a baseline.
 - Browser + accessibility correlation by the exact allowlisted runtime URL.
 - Browser + security correlation by the exact allowlisted runtime URL.
+- Browser + performance correlation by the exact allowlisted runtime URL.
 - Repository + runtime evidence correlation without unsupported causal claims.
 - Next.js QA Director UI with real planning, execution status, event streaming and reports.
 - Evidence downloads routed through the authenticated server-side control-plane proxy.
@@ -161,7 +169,7 @@ python -m unittest discover -s tests -v
 Current result:
 
 ```text
-Ran 72 tests
+Ran 76 tests
 OK
 ```
 
@@ -195,7 +203,8 @@ workers/       Bounded tool workers
 - Bearer authentication is single-tenant; user accounts and role-based access are not implemented.
 - Browser automation is navigation-only: no login, clicks or form submission yet.
 - Screenshots and traces must not contain real sensitive user data.
-- Performance remains visible as pending and is never simulated.
+- Performance is a small laboratory smoke, not field telemetry: it does not measure INP,
+  representative user conditions or regression without a baseline.
 - Security is passive runtime inspection only; source, dependency, authenticated and active
   exploit testing remain out of scope.
 - axe-core detects only automatable issues; keyboard, screen-reader and full WCAG conformance

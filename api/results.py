@@ -27,6 +27,10 @@ LOCAL_ARTIFACT_LAYOUT = {
         "directory": "security",
         "kinds": {"passive"},
     },
+    "performance": {
+        "directory": "performance",
+        "kinds": {"smoke"},
+    },
 }
 
 
