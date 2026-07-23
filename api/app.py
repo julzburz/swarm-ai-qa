@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -11,10 +12,12 @@ from fastapi.responses import StreamingResponse
 from orchestrator import (
     AgentRegistry,
     EventStream,
+    NeonRunStore,
     RuleBasedQaDirector,
     SQLiteRunStore,
     SwarmOrchestrator,
 )
+from database.config import DatabaseSettings
 from orchestrator.models import RunEventV1, RunStateV1, RunStatus
 from orchestrator.store import RunStore
 from schemas.mission import UserMissionRequestV1
@@ -40,7 +43,10 @@ def create_app(
 ) -> FastAPI:
     settings = settings or ApiSettings.from_env()
     owns_store = store is None
-    run_store = store or SQLiteRunStore(settings.sqlite_path)
+    run_store = store or _create_run_store(settings)
+    storage_backend = (
+        "neon" if isinstance(run_store, NeonRunStore) else "sqlite"
+    )
     agent_registry = registry or AgentRegistry()
     events = EventStream(run_store)
     orchestrator = SwarmOrchestrator(agent_registry, run_store, events)
@@ -50,6 +56,17 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
+            if isinstance(run_store, NeonRunStore):
+                healthy = await asyncio.to_thread(run_store.healthcheck)
+                schema_ready = await asyncio.to_thread(
+                    run_store.schema_is_ready
+                )
+                if not healthy:
+                    raise RuntimeError("Neon healthcheck failed")
+                if not schema_ready:
+                    raise RuntimeError(
+                        "Neon schema is not ready; run alembic upgrade head"
+                    )
             yield
         finally:
             await controller.shutdown()
@@ -69,10 +86,14 @@ def create_app(
     app.state.orchestrator = orchestrator
     app.state.run_store = run_store
     app.state.event_stream = events
+    app.state.storage_backend = storage_backend
 
     @app.get("/healthz", response_model=HealthResponseV1, tags=["system"])
     async def health() -> HealthResponseV1:
-        return HealthResponseV1(version=settings.version)
+        return HealthResponseV1(
+            version=settings.version,
+            storage=storage_backend,
+        )
 
     @app.post(
         "/v1/plans/preview",
@@ -179,6 +200,16 @@ def create_app(
         )
 
     return app
+
+
+def _create_run_store(settings: ApiSettings) -> RunStore:
+    if settings.storage_backend == "neon":
+        database_settings = DatabaseSettings.from_env(
+            env_file=None,
+            require_direct=False,
+        )
+        return NeonRunStore(database_settings)
+    return SQLiteRunStore(settings.sqlite_path)
 
 
 def _require_run(store: RunStore, run_id: UUID) -> RunStateV1:

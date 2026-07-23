@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from api.app import create_app
+from api.config import ApiSettings
 from orchestrator import AgentRegistry, RuleBasedQaDirector, SQLiteRunStore
 from orchestrator.models import RunStatus
 from schemas.common import Environment, MissionMode, QualityDomain, RuntimeTargetV1
@@ -70,6 +73,7 @@ class ControlPlaneApiTests(unittest.TestCase):
 
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["status"], "ok")
+        self.assertEqual(health.json()["storage"], "sqlite")
         self.assertEqual(openapi.status_code, 200)
         self.assertIn("/v1/runs", openapi.json()["paths"])
 
@@ -163,6 +167,42 @@ class ControlPlaneApiTests(unittest.TestCase):
                     return body
             time.sleep(0.01)
         self.fail(f"Run {run_id} did not reach a terminal state")
+
+
+class ApiSettingsTests(unittest.TestCase):
+    def test_auto_storage_uses_sqlite_without_database_url(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            settings = ApiSettings.from_env(env_file=None)
+        self.assertEqual(settings.storage_backend, "sqlite")
+
+    def test_auto_storage_uses_neon_when_database_url_exists(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgresql://user:secret@example.com/db"},
+            clear=True,
+        ):
+            settings = ApiSettings.from_env(env_file=None)
+        self.assertEqual(settings.storage_backend, "neon")
+
+    def test_explicit_sqlite_overrides_configured_database_url(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql://user:secret@example.com/db",
+                "SWARM_STORAGE_BACKEND": "sqlite",
+            },
+            clear=True,
+        ):
+            settings = ApiSettings.from_env(env_file=None)
+        self.assertEqual(settings.storage_backend, "sqlite")
+
+    def test_explicit_neon_requires_database_url(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"SWARM_STORAGE_BACKEND": "neon"},
+            clear=True,
+        ), self.assertRaises(RuntimeError):
+            ApiSettings.from_env(env_file=None)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
 
+from api.app import create_app
+from api.config import ApiSettings
 from database.config import DatabaseSettings
 from database.models import metadata, run_events, run_tasks, runs
 from orchestrator.director import RuleBasedQaDirector
@@ -140,6 +144,71 @@ class NeonRunStoreCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(restored.status, RunStatus.COMPLETED)
             finally:
                 reopened.close()
+
+
+class NeonApiRestartTests(unittest.TestCase):
+    def test_api_restores_completed_run_after_store_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "api-neon-emulation.db"
+            database_url = f"sqlite+pysqlite:///{database_path}"
+            first_store = NeonRunStore(
+                engine=create_engine(
+                    database_url,
+                    connect_args={"check_same_thread": False},
+                ),
+                create_schema=True,
+            )
+            current_mission = mission()
+            plan = RuleBasedQaDirector().build_plan(current_mission)
+            registry = AgentRegistry()
+            for agent_id in plan.selected_agents:
+                registry.register(SuccessfulAgent(agent_id))
+            first_app = create_app(
+                settings=ApiSettings(storage_backend="neon"),
+                store=first_store,
+                registry=registry,
+            )
+            with TestClient(first_app) as client:
+                health = client.get("/healthz")
+                accepted = client.post(
+                    "/v1/runs",
+                    json={
+                        "mission": current_mission.model_dump(mode="json"),
+                        "approved": True,
+                    },
+                )
+                run_id = accepted.json()["run_id"]
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    state = client.get(f"/v1/runs/{run_id}")
+                    if state.json()["status"] == RunStatus.COMPLETED.value:
+                        break
+                    time.sleep(0.01)
+                else:
+                    self.fail("Run did not complete before restart")
+            self.assertEqual(health.json()["storage"], "neon")
+            first_store.close()
+
+            reopened_store = NeonRunStore(
+                engine=create_engine(
+                    database_url,
+                    connect_args={"check_same_thread": False},
+                )
+            )
+            reopened_app = create_app(
+                settings=ApiSettings(storage_backend="neon"),
+                store=reopened_store,
+            )
+            try:
+                with TestClient(reopened_app) as client:
+                    restored = client.get(f"/v1/runs/{run_id}")
+                self.assertEqual(restored.status_code, 200)
+                self.assertEqual(
+                    restored.json()["status"],
+                    RunStatus.COMPLETED.value,
+                )
+            finally:
+                reopened_store.close()
 
 
 if __name__ == "__main__":

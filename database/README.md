@@ -21,6 +21,16 @@ alembic upgrade head
 
 Alembic utiliza únicamente `DATABASE_DIRECT_URL`. La aplicación se conecta mediante `DATABASE_URL`.
 
+## Selección automática en FastAPI
+
+Con `SWARM_STORAGE_BACKEND=auto`, FastAPI elige Neon cuando `DATABASE_URL` está configurada y
+SQLite cuando no lo está. También se puede fijar explícitamente `neon` o `sqlite`.
+
+La aplicación solo necesita `DATABASE_URL`; `DATABASE_DIRECT_URL` se exige únicamente al ejecutar
+migraciones. Antes de aceptar tráfico con Neon, el arranque verifica la conexión y que existan
+`runs`, `run_tasks` y `run_events`. Si la base no está lista, la API falla de forma visible en vez
+de guardar datos silenciosamente en otro backend.
+
 ## Datos y artefactos
 
 Neon almacena estado, eventos, tareas, findings, mensajes y metadatos. Screenshots, videos, traces y logs grandes pertenecen a S3; la tabla `artifacts` conserva su referencia, hash y estado de redacción.
