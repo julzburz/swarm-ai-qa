@@ -1,0 +1,33 @@
+# Secrets and local environment files
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+*.db-shm
+*.db-wal
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data and generated evidence
+artifacts/
+.data/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+
+# Coverage, logs and operating-system files
+.coverage
+htmlcov/
+*.log
+.DS_Store
+Thumbs.db
